@@ -3,7 +3,7 @@
 ## Objetivo
 Executar build, testes, scan e publicação de imagem a cada PR/push.
 
-## Escopo (workflow `ci.yml`)
+## Escopo (workflow `ci.yaml`)
 1. `actions/checkout` (fetch-depth 0).
 2. `actions/setup-java` (Temurin 21) com cache Maven.
 3. `mvn test package` e publicação de relatórios JUnit.

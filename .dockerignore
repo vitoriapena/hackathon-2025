@@ -1,0 +1,12 @@
+target
+.git
+.gitignore
+README.md
+.mvn/wrapper/maven-wrapper.jar
+.mvn/wrapper/maven-wrapper.properties
+.mvn/wrapper/maven-wrapper.properties.lock
+**/node_modules
+**/dist
+**/.idea
+**/.vscode
+**/*.iml
