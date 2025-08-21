@@ -1,25 +1,24 @@
 #!/usr/bin/env bash
-# build-deploy-local.sh — build image, import to k3d (if present), apply manifests (base -> des overlay) and run smoke job
+# build-deploy-local.sh — build image, import to k3d clusters, apply manifests (base -> env overlay) and run smoke job
 # Usage:
 #   ORG=your-org REPO=your-repo ./scripts/build-deploy-local.sh
 set -euo pipefail
 
 # --- config / env ---
-CLUSTER="${K3D_CLUSTER:-des}"        # k3d cluster name used for k3d image import (default: des)
-NAMESPACE="des"
+K3D_CLUSTER="${K3D_CLUSTER:-hackathon-k3d}"
+DES_NAMESPACE="${DES_NAMESPACE:-des}"
+PRD_NAMESPACE="${PRD_NAMESPACE:-prd}"
 TIMEOUT_ROLLOUT="${TIMEOUT_ROLLOUT:-120s}"
 TIMEOUT_SMOKE="${TIMEOUT_SMOKE:-60s}"
-TMPDIR="$(mktemp -d)"
+APPROVE_PRD="${APPROVE_PRD:-false}"
+TMPROOT="$(mktemp -d)"
 CLEANUP_ON_EXIT=true
 
-trap 'if [ "${CLEANUP_ON_EXIT}" = true ]; then rm -rf "${TMPDIR}"; fi' EXIT
+trap 'if [ "${CLEANUP_ON_EXIT}" = true ]; then rm -rf "${TMPROOT}"; fi' EXIT
 
 # --- helpers ---
-err() { printf '%s
-' "$*" >&2; }
-require_cmd() {
-  command -v "$1" >/dev/null 2>&1 || { err "Required command not found: $1"; exit 2; }
-}
+err() { printf '%s\n' "$*" >&2; }
+require_cmd() { command -v "$1" >/dev/null 2>&1 || { err "Required command not found: $1"; exit 2; }; }
 
 # infer ORG/REPO from git remote if not supplied
 infer_org_repo() {
@@ -35,17 +34,95 @@ infer_org_repo() {
   return 1
 }
 
+# render function: copies manifests to env-specific tmp dir and substitutes tokens
+render_manifests_env() {
+  local env_ns="$1" env_dir="$2"
+  mkdir -p "${env_dir}/base" "${env_dir}/overlay"
+  cp -a deploy/base/. "${env_dir}/base/"
+  if [ -d "deploy/${env_ns}" ]; then
+    cp -a "deploy/${env_ns}/." "${env_dir}/overlay/"
+  fi
+  # Replace image placeholder in all yamls
+  find "${env_dir}" -type f \( -name '*.yaml' -o -name '*.yml' \) -print0 | while IFS= read -r -d '' f; do
+    if grep -q "ghcr.io/<org>/<repo>:<sha>" "$f" 2>/dev/null; then
+      sed -i "s|ghcr.io/<org>/<repo>:<sha>|${IMAGE}|g" "$f"
+    fi
+  done
+  # Resolve ${NAMESPACE} placeholders using envsubst (scoped to env_ns)
+  find "${env_dir}" -type f \( -name '*.yaml' -o -name '*.yml' \) -print0 | while IFS= read -r -d '' f; do
+    tmpf="${f}.rendered"
+    NAMESPACE="${env_ns}" envsubst < "$f" > "$tmpf" && mv "$tmpf" "$f"
+  done
+}
+
+# switch kubectl context to given k3d cluster name if it exists
+use_k3d_context() {
+  local cluster="$1" ctx="k3d-${1}"
+  if kubectl config get-contexts -o name | grep -qx "$ctx"; then
+    kubectl config use-context "$ctx" >/dev/null
+    return 0
+  fi
+  return 1
+}
+
+# import image into k3d cluster if it exists
+import_image_into_k3d() {
+  local cluster="$1"
+  if command -v k3d >/dev/null 2>&1; then
+    if k3d cluster list | awk '{print $1}' | grep -qx "$cluster"; then
+      printf "\nImporting image into k3d cluster '%s'\n" "$cluster"
+      k3d image import "${IMAGE}" --cluster "$cluster" || true
+      k3d image import "${IMAGE_DES}" --cluster "$cluster" || true
+    else
+      printf "\nCluster '%s' not found. Skipping image import.\n" "$cluster"
+    fi
+  fi
+}
+
+# deploy routine for one environment
+deploy_env() {
+  local cluster="$1" ns="$2" envtmp="$3"
+  printf "\n==> Deploying to cluster '%s' namespace '%s'\n" "$cluster" "$ns"
+
+  # try switch context
+  if ! use_k3d_context "$cluster"; then
+    printf "Context k3d-%s not found. Using current kubectl context.\n" "$cluster"
+  fi
+
+  printf "Ensuring namespace '%s' exists\n" "$ns"
+  kubectl create namespace "$ns" --dry-run=client -o yaml | kubectl apply -f -
+
+  printf "Applying rendered deploy/base for '%s'\n" "$ns"
+  kubectl apply -R -f "${envtmp}/base"
+
+  if [ -d "${envtmp}/overlay" ]; then
+    printf "Applying rendered overlay for '%s'\n" "$ns"
+    kubectl apply -R -f "${envtmp}/overlay"
+  fi
+
+  printf "Waiting for rollout of deploy/app in '%s'\n" "$ns"
+  kubectl -n "$ns" rollout status deploy/app --timeout="${TIMEOUT_ROLLOUT}"
+
+  local smoke_yaml="${envtmp}/base/smoke-job.yaml"
+  if [ -f "$smoke_yaml" ]; then
+    printf "Running smoke job for '%s'\n" "$ns"
+    kubectl -n "$ns" delete job smoke-health --ignore-not-found || true
+    kubectl -n "$ns" apply -f "$smoke_yaml"
+    kubectl -n "$ns" wait --for=condition=complete job/smoke-health --timeout="${TIMEOUT_SMOKE}" || {
+      err "Smoke failed in ns=$ns. Logs:"; kubectl -n "$ns" logs job/smoke-health || true; exit 3; }
+    kubectl -n "$ns" logs job/smoke-health || true
+  fi
+}
+
 # --- preflight ---
 require_cmd mvn
 require_cmd docker
 require_cmd kubectl
 require_cmd git
+require_cmd envsubst
 
-if command -v k3d >/dev/null 2>&1; then
-  HAVE_K3D=true
-else
-  HAVE_K3D=false
-fi
+HAVE_K3D=false
+if command -v k3d >/dev/null 2>&1; then HAVE_K3D=true; fi
 
 # ORG/REPO/TAG/IMAGE
 TAG="${TAG:-$(git rev-parse --short HEAD)}"
@@ -53,17 +130,11 @@ ORG="${ORG:-}"
 REPO="${REPO:-}"
 
 if [[ -z "$ORG" || -z "$REPO" ]]; then
-  if inferred=$(infer_org_repo); then
-    read -r iorg irepo <<<"$inferred"
-    ORG="${ORG:-$iorg}"
-    REPO="${REPO:-$irepo}"
-  fi
+  if inferred=$(infer_org_repo); then read -r iorg irepo <<<"$inferred"; ORG="${ORG:-$iorg}"; REPO="${REPO:-$irepo}"; fi
 fi
 
 if [[ -z "$ORG" || -z "$REPO" ]]; then
-  err "ORG and REPO not set and could not be inferred. Set env ORG and REPO, e.g.:"
-  err "  ORG=my-org REPO=my-repo ./scripts/build-deploy-local.sh"
-  exit 1
+  err "ORG and REPO not set and could not be inferred. Set env ORG and REPO."; exit 1
 fi
 
 IMAGE="ghcr.io/${ORG}/${REPO}:${TAG}"
@@ -72,84 +143,49 @@ IMAGE_DES="ghcr.io/${ORG}/${REPO}:des"
 printf "Will build image: %s (alias: %s)\n" "$IMAGE" "$IMAGE_DES"
 
 # --- build ---
-printf "\n1) Maven build\n"
-mvn -B -DskipTests=false package
+printf "\n1) Maven build\n"; mvn -B -DskipTests=false package
+printf "\n2) Docker build\n"; docker build -t "${IMAGE}" .; docker tag "${IMAGE}" "${IMAGE_DES}" || true
 
-printf "\n2) Docker build\n"
-docker build -t "${IMAGE}" .
-
-# also tag :des for last DES deploy convenience
-docker tag "${IMAGE}" "${IMAGE_DES}" || true
-
-# --- make image available to k3d ---
+# --- make image available to k3d (both clusters if present) ---
 if [ "${HAVE_K3D}" = true ]; then
-  # auto-detect current kubectl context cluster if CLUSTER not found
-  ACTUAL_CLUSTER="${CLUSTER}"
-  if ! k3d cluster list | grep -q "^${CLUSTER}"; then
-    # try to infer from kubectl context
-    current_context=$(kubectl config current-context 2>/dev/null || true)
-    if [[ "$current_context" =~ k3d-(.+) ]]; then
-      detected_cluster="${BASH_REMATCH[1]}"
-      printf "\n3) Cluster '%s' not found, but detected '%s' from kubectl context. Using detected cluster.\n" "${CLUSTER}" "${detected_cluster}"
-      ACTUAL_CLUSTER="${detected_cluster}"
+  import_image_into_k3d "$K3D_CLUSTER"
+else
+  printf "\n3) k3d not available. Ensure the image is reachable by the cluster (push to registry).\n"
+fi
+
+# --- render per environment ---
+DES_TMP="${TMPROOT}/des"; PRD_TMP="${TMPROOT}/prd"
+printf "\n4) Rendering manifests (DES -> %s, PRD -> %s)\n" "$DES_TMP" "$PRD_TMP"
+render_manifests_env "$DES_NAMESPACE" "$DES_TMP"
+render_manifests_env "$PRD_NAMESPACE" "$PRD_TMP"
+
+# --- deploy DES ---
+printf "\n5) Deploying to DES (cluster=%s ns=%s)\n" "$K3D_CLUSTER" "$DES_NAMESPACE"
+use_k3d_context "$K3D_CLUSTER" || true
+deploy_env "$K3D_CLUSTER" "$DES_NAMESPACE" "$DES_TMP"
+printf "DES deploy complete.\n"
+
+# --- approval for PRD ---
+DO_PRD=false
+if [[ "${APPROVE_PRD}" == "true" ]]; then
+  DO_PRD=true
+else
+  if [ -t 1 ]; then
+    read -r -p $'\nProceed to deploy PRD (cluster=%s ns=%s)? [y/N]: ' -e -i "n" response
+    if [[ "$response" =~ ^[Yy]$ ]]; then
+      DO_PRD=true
     fi
   fi
-  
-  if k3d cluster list | grep -q "^${ACTUAL_CLUSTER}"; then
-    printf "\n3) Importing image into k3d cluster '%s'\n" "${ACTUAL_CLUSTER}"
-    k3d image import "${IMAGE}" --cluster "${ACTUAL_CLUSTER}" || true
-    k3d image import "${IMAGE_DES}" --cluster "${ACTUAL_CLUSTER}" || true
-  else
-    printf "\n3) k3d present but cluster '%s' not found. Skipping import. Create cluster or push to registry.\n" "${ACTUAL_CLUSTER}"
-  fi
-else
-  printf "\n3) k3d not available. Ensure the image is reachable by the cluster (push to registry) and update overlays accordingly.\n"
 fi
 
-# --- prepare overlay with concrete image (work in tmp to avoid changing git tracked files) ---
-printf "\n4) Preparing overlay with concrete image in temp dir: %s\n" "${TMPDIR}"
-mkdir -p "${TMPDIR}/des"
-cp -a deploy/des/* "${TMPDIR}/des/" 2>/dev/null || true
-
-# replace placeholder occurrences in all files under tmpdir
-find "${TMPDIR}" -type f -name '*.yaml' -o -name '*.yml' | while read -r f; do
-  if grep -q "ghcr.io/<org>/<repo>:<sha>" "$f" 2>/dev/null; then
-    sed -i "s|ghcr.io/<org>/<repo>:<sha>|${IMAGE}|g" "$f"
-  fi
-done || true
-
-# --- apply manifests (declarative sequence) ---
-printf "\n5) Cleaning old smoke job/pods (if any) before applying deploy/base\n"
-kubectl -n "${NAMESPACE}" delete job smoke-health --ignore-not-found || true
-kubectl -n "${NAMESPACE}" delete pods -l job-name=smoke-health --ignore-not-found || true
-
-printf "\n5) Applying deploy/base\n"
-kubectl apply -R -f deploy/base
-
-printf "\n6) Applying deploy/des (from temp overlay)\n"
-kubectl apply -R -f "${TMPDIR}/des"
-
-printf "\n7) Waiting for rollout of deploy/app in namespace '%s'\n" "${NAMESPACE}"
-kubectl -n "${NAMESPACE}" rollout status deploy/app --timeout="${TIMEOUT_ROLLOUT}"
-
-# --- smoke job ---
-SMOKE_YAML="deploy/base/smoke-job.yaml"
-if [ -f "${SMOKE_YAML}" ]; then
-  printf "\n8) Ensuring old smoke job (if any) is removed and running smoke job (in-cluster): %s\n" "${SMOKE_YAML}"
-  # remove previous job to avoid immutable field errors when reapplying
-  kubectl -n "${NAMESPACE}" delete job smoke-health --ignore-not-found || true
-  kubectl -n "${NAMESPACE}" apply -f "${SMOKE_YAML}"
-  kubectl -n "${NAMESPACE}" wait --for=condition=complete job/smoke-health --timeout="${TIMEOUT_SMOKE}" || {
-    err "Smoke job did not complete successfully. Showing job logs for diagnosis."
-    kubectl -n "${NAMESPACE}" logs job/smoke-health || true
-    err "You can try a port-forward fallback: kubectl -n ${NAMESPACE} port-forward svc/app 8080:8080 &"
-    exit 3
-  }
-  printf "\nSmoke job succeeded. Logs:\n"
-  kubectl -n "${NAMESPACE}" logs job/smoke-health || true
+if [ "$DO_PRD" = true ]; then
+  printf "\n6) Deploying to PRD (cluster=%s ns=%s)\n" "$K3D_CLUSTER" "$PRD_NAMESPACE"
+  use_k3d_context "$K3D_CLUSTER" || true
+  deploy_env "$K3D_CLUSTER" "$PRD_NAMESPACE" "$PRD_TMP"
+  printf "PRD deploy complete.\n"
 else
-  err "Smoke job not found at ${SMOKE_YAML}. Skipping smoke step."
+  printf "\nPRD deployment skipped.\n"
 fi
 
-printf "\nDone: application deployed to '%s' and smoke validated.\n" "${NAMESPACE}"
-printf "Temporary overlay folder %s removed on exit.\n" "${TMPDIR}"
+printf "\nDone: application deployed to DES and optionally PRD.\n"
+printf "Temporary overlay folder %s removed on exit.\n" "${TMPROOT}"

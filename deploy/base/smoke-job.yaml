@@ -2,7 +2,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: smoke-health
-  namespace: des
+  namespace: ${NAMESPACE}
   labels:
     app: getting-started
 spec:
@@ -14,7 +14,7 @@ spec:
         - name: curl
           image: curlimages/curl:8.2.1
           command: ["/bin/sh","-c"]
-          args: ["curl -fsS http://app.des.svc.cluster.local:8080/q/health || exit 1"]
+          args: ["curl -fsS http://app:8080/q/health || exit 1"]
       # run with minimal privileges
       securityContext:
         runAsNonRoot: true
