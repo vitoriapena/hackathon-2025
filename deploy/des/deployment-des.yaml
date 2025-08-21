@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: app
-  namespace: des
+  namespace: ${NAMESPACE}
   labels:
     app: getting-started
 spec:

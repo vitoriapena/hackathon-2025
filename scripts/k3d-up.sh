@@ -23,15 +23,10 @@ else
   k3d cluster create "${CLUSTER_NAME}" -c "${K3D_CONFIG}"
 fi
 
-# apply declarative resources
-if [ -d "$(dirname "${BASH_SOURCE[0]}")/../deploy/base" ]; then
-  kubectl apply -R -f "$(dirname "${BASH_SOURCE[0]}")/../deploy/base" || true
-fi
-# ensure namespaces and environment overlay
-if [ -d "$(dirname "${BASH_SOURCE[0]}")/../deploy/des" ]; then
-  kubectl apply -R -f "$(dirname "${BASH_SOURCE[0]}")/../deploy/des" || true
-else
-  echo "Info: $(dirname "${BASH_SOURCE[0]}")/../deploy/des not found; skipping environment overlay"
+# ensure namespaces only (rendered app manifests are applied elsewhere)
+NS_FILE="$(dirname "${BASH_SOURCE[0]}")/../deploy/base/namespaces.yaml"
+if [ -f "$NS_FILE" ]; then
+  kubectl apply -f "$NS_FILE" || true
 fi
 
 # inject hosts from infra/k3d/hosts.conf if present

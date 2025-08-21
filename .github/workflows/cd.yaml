@@ -66,8 +66,9 @@ jobs:
       - name: Apply Deployment (DES)
         env:
           IMAGE: ${{ env.IMAGE }}
+          NAMESPACE: ${{ env.NAMESPACE }}
         run: |
-          sed "s#ghcr.io/<org>/<repo>:<sha>#$IMAGE#g" deploy/des/deployment-des.yaml | kubectl apply -f -
+          envsubst < deploy/des/deployment-des.yaml | sed "s#ghcr.io/<org>/<repo>:<sha>#$IMAGE#g" | kubectl apply -f -
 
       - name: Wait for rollout
         run: kubectl -n $NAMESPACE rollout status deploy/app --timeout=90s
