@@ -66,7 +66,7 @@ jobs:
 
       - name: Trivy scan (fail on HIGH/CRITICAL)
         run: |
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasecurity/trivy:0.41.2 image --exit-code 1 --severity HIGH,CRITICAL $IMAGE || (echo "Trivy found HIGH/CRITICAL vulnerabilities" && exit 1)
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock ghcr.io/aquasecurity/trivy:0.41.2 image --exit-code 1 --severity HIGH,CRITICAL $IMAGE || (echo "Trivy found HIGH/CRITICAL vulnerabilities" && exit 1)
 
       - name: Login to GHCR
         uses: docker/login-action@v2
