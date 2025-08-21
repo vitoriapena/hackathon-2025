@@ -71,8 +71,12 @@ import_image_into_k3d() {
   if command -v k3d >/dev/null 2>&1; then
     if k3d cluster list | awk '{print $1}' | grep -qx "$cluster"; then
       printf "\nImporting image into k3d cluster '%s'\n" "$cluster"
-      k3d image import "${IMAGE}" --cluster "$cluster" || true
-      k3d image import "${IMAGE_DES}" --cluster "$cluster" || true
+      if ! k3d image import "${IMAGE}" --cluster "$cluster"; then
+        err "Warning: Failed to import image '${IMAGE}' into k3d cluster '${cluster}'"
+      fi
+      if ! k3d image import "${IMAGE_DES}" --cluster "$cluster"; then
+        err "Warning: Failed to import image '${IMAGE_DES}' into k3d cluster '${cluster}'"
+      fi
     else
       printf "\nCluster '%s' not found. Skipping image import.\n" "$cluster"
     fi
