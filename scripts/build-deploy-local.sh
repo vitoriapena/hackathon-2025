@@ -148,7 +148,7 @@ printf "Will build image: %s (alias: %s)\n" "$IMAGE" "$IMAGE_DES"
 
 # --- build ---
 printf "\n1) Maven build\n"; mvn -B -DskipTests=false package
-printf "\n2) Docker build\n"; docker build -t "${IMAGE}" .; docker tag "${IMAGE}" "${IMAGE_DES}" || true
+printf "\n2) Docker build\n"; docker build -t "${IMAGE}" .; docker tag "${IMAGE}" "${IMAGE_DES}"
 
 # --- make image available to k3d (both clusters if present) ---
 if [ "${HAVE_K3D}" = true ]; then
