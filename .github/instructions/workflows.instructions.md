@@ -7,7 +7,6 @@ applyTo: ".github/workflows/*.yml"
 - Use **checkout** with `fetch-depth: 0`.
 - Use **setup-java** (Temurin 21) with Maven cache.
 - Keep `permissions` minimal: `contents: read`, `packages: write`, add `security-events: write` only if running CodeQL.
-- **Pin actions by SHA**.
 - Add `concurrency` per branch to avoid duplicate runs.
 - Steps (CI):
   1) `mvn -B -DskipTests=false package`
