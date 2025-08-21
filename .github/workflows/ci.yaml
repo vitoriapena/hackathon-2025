@@ -65,7 +65,7 @@ jobs:
           push: false
 
       - name: Trivy scan (fail on HIGH/CRITICAL)
-        uses: aquasecurity/trivy-action@v0.32.0
+        uses: aquasecurity/trivy-action@0.32.0
         with:
           scan-type: image
           image-ref: ${{ env.IMAGE }}
