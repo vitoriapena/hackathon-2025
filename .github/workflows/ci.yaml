@@ -35,6 +35,11 @@ jobs:
           java-version: '21'
           cache: maven
 
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v2
+        with:
+          languages: java
+
       - name: Build and test (Maven)
         run: mvn -B -DskipTests=false package
 
@@ -43,11 +48,6 @@ jobs:
         with:
           name: junit-reports
           path: target/surefire-reports/*.xml
-
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v2
-        with:
-          languages: java
 
       - name: Run CodeQL analysis
         uses: github/codeql-action/analyze@v2
