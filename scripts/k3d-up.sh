@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # idempotent k3d cluster up script
-CLUSTER_NAME="hackathon-k3d"
+CLUSTER_NAME="${K3D_CLUSTER:-hackathon-k3d}"
 K3D_CONFIG="$(dirname "${BASH_SOURCE[0]}")/../infra/k3d/cluster.yaml"
 HOSTS_FILE="$(dirname "${BASH_SOURCE[0]}")/../infra/k3d/hosts.conf"
 HOSTS_MARKER_BEGIN="# >>> hackathon-2025 hosts BEGIN"
@@ -19,18 +19,14 @@ if k3d cluster list -o json | jq -e ".[] | select(.name==\"${CLUSTER_NAME}\")" >
   echo "Cluster ${CLUSTER_NAME} already exists. Skipping creation."
 else
   echo "Creating cluster ${CLUSTER_NAME} from ${K3D_CONFIG}"
-  k3d cluster create --config "${K3D_CONFIG}"
+  # Use positional NAME argument for compatibility across k3d versions
+  k3d cluster create "${CLUSTER_NAME}" -c "${K3D_CONFIG}"
 fi
 
-# apply declarative resources
-if [ -d "$(dirname "${BASH_SOURCE[0]}")/../deploy/base" ]; then
-  kubectl apply -R -f "$(dirname "${BASH_SOURCE[0]}")/../deploy/base" || true
-fi
-# ensure namespaces and environment overlay
-if [ -d "$(dirname "${BASH_SOURCE[0]}")/../deploy/des" ]; then
-  kubectl apply -R -f "$(dirname "${BASH_SOURCE[0]}")/../deploy/des" || true
-else
-  echo "Info: $(dirname "${BASH_SOURCE[0]}")/../deploy/des not found; skipping environment overlay"
+# ensure namespaces only (rendered app manifests are applied elsewhere)
+NS_FILE="$(dirname "${BASH_SOURCE[0]}")/../deploy/base/namespaces.yaml"
+if [ -f "$NS_FILE" ]; then
+  kubectl apply -f "$NS_FILE" || true
 fi
 
 # inject hosts from infra/k3d/hosts.conf if present

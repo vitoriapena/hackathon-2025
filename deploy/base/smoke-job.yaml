@@ -1,0 +1,21 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: smoke-health
+  namespace: ${NAMESPACE}
+  labels:
+    app: getting-started
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: curl
+          image: curlimages/curl:8.2.1
+          command: ["/bin/sh","-c"]
+          args: ["curl -fsS --retry 10 --retry-delay 3 --retry-all-errors --max-time 5 http://app.${NAMESPACE}.svc.cluster.local:8080/q/health || exit 1"]
+      # run with minimal privileges
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001

@@ -1,0 +1,161 @@
+name: CD
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      image:
+        description: 'Full image tag for PRD (e.g., ghcr.io/<org>/<repo>:<sha>)'
+        required: true
+        default: ''
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  deploy_des:
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main'
+    name: Deploy DES (ephemeral k3d)
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: ghcr.io/${{ github.repository }}:${{ github.event.workflow_run.head_sha }}
+      NAMESPACE: des
+      CLUSTER_NAME: hackathon-k3d-ephemeral
+    steps:
+      - name: Checkout (commit from CI)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Install k3d and envsubst
+        run: |
+          curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
+          sudo apt-get update -y && sudo apt-get install -y gettext-base
+          k3d version
+
+      - name: Create k3d cluster
+        run: |
+          k3d cluster create $CLUSTER_NAME --agents 0 --servers 1 --wait
+          kubectl config use-context k3d-$CLUSTER_NAME
+          kubectl get nodes
+
+      - name: Login to GHCR
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull image and import into k3d
+        run: |
+          docker pull "$IMAGE"
+          k3d image import --cluster "$CLUSTER_NAME" "$IMAGE"
+
+      - name: Apply namespaces
+        run: kubectl apply -f deploy/base/namespaces.yaml
+
+      - name: Apply Service (DES)
+        env:
+          NAMESPACE: ${{ env.NAMESPACE }}
+        run: |
+          envsubst < deploy/base/service.yaml | kubectl apply -f -
+
+      - name: Apply Deployment (DES)
+        env:
+          IMAGE: ${{ env.IMAGE }}
+          NAMESPACE: ${{ env.NAMESPACE }}
+        run: |
+          envsubst < deploy/des/deployment-des.yaml | sed "s#ghcr.io/<org>/<repo>:<sha>#$IMAGE#g" | kubectl apply -f -
+
+      - name: Wait for rollout
+        run: kubectl -n $NAMESPACE rollout status deploy/app --timeout=90s
+
+      - name: Smoke test Job
+        env:
+          NAMESPACE: ${{ env.NAMESPACE }}
+        run: |
+          envsubst < deploy/base/smoke-job.yaml | kubectl apply -f -
+          kubectl -n $NAMESPACE wait --for=condition=complete --timeout=60s job/smoke-health
+          kubectl -n $NAMESPACE logs job/smoke-health --tail=50
+
+      - name: Tag image as :des and push
+        env:
+          IMAGE: ${{ env.IMAGE }}
+        run: |
+          docker tag "$IMAGE" ghcr.io/${{ github.repository }}:des
+          docker push ghcr.io/${{ github.repository }}:des
+
+      - name: Destroy k3d cluster
+        if: always()
+        run: k3d cluster delete $CLUSTER_NAME
+
+  deploy_prd:
+    if: github.event_name == 'workflow_dispatch'
+    name: Deploy PRD (manual, ephemeral k3d)
+    runs-on: ubuntu-latest
+    environment: prd
+    env:
+      IMAGE: ${{ inputs.image }}
+      NAMESPACE: prd
+      CLUSTER_NAME: hackathon-k3d-ephemeral
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install k3d and envsubst
+        run: |
+          curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
+          sudo apt-get update -y && sudo apt-get install -y gettext-base
+          k3d version
+
+      - name: Create k3d cluster
+        run: |
+          k3d cluster create $CLUSTER_NAME --agents 0 --servers 1 --wait
+          kubectl config use-context k3d-$CLUSTER_NAME
+          kubectl get nodes
+
+      - name: Login to GHCR
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull image and import into k3d
+        run: |
+          docker pull "$IMAGE"
+          k3d image import --cluster "$CLUSTER_NAME" "$IMAGE"
+
+      - name: Apply namespaces
+        run: kubectl apply -f deploy/base/namespaces.yaml
+
+      - name: Apply Service (PRD)
+        env:
+          NAMESPACE: ${{ env.NAMESPACE }}
+        run: |
+          envsubst < deploy/base/service.yaml | kubectl apply -f -
+
+      - name: Apply Deployment (PRD)
+        env:
+          IMAGE: ${{ env.IMAGE }}
+          NAMESPACE: ${{ env.NAMESPACE }}
+        run: |
+          envsubst < deploy/prd/deployment-prd.yaml | sed "s#ghcr.io/<org>/<repo>:<sha>#$IMAGE#g" | kubectl apply -f -
+
+      - name: Wait for rollout
+        run: kubectl -n $NAMESPACE rollout status deploy/app --timeout=120s
+
+      - name: Smoke test Job
+        env:
+          NAMESPACE: ${{ env.NAMESPACE }}
+        run: |
+          envsubst < deploy/base/smoke-job.yaml | kubectl apply -f -
+          kubectl -n $NAMESPACE wait --for=condition=complete --timeout=60s job/smoke-health
+          kubectl -n $NAMESPACE logs job/smoke-health --tail=50
+
+      - name: Destroy k3d cluster
+        if: always()
+        run: k3d cluster delete $CLUSTER_NAME

@@ -88,12 +88,12 @@ jobs:
           push: true
           tags: |
             ${{ env.IMAGE }}
-            ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:des
         
       - name: Upload build metadata
         uses: actions/upload-artifact@v4
         with:
           name: image-metadata
+          if-no-files-found: error
           path: |
-            target/quarkus-app/application.properties
-            quarkus-artifact.properties
+            target/classes/application.properties
+            target/quarkus-artifact.properties

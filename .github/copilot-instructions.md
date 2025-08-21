@@ -46,7 +46,7 @@ If you add files, follow this structure.
 - CI (`.github/workflows/ci.yaml`):
   - checkout (depth 0) → setup-java (Temurin 21) → `mvn test package`.
   - build Docker image → **Trivy image scan** (fail on HIGH/CRITICAL) → push to GHCR.
-  - Keep workflow permissions minimal (`contents:read`, `packages:write`). Pin actions by SHA.
+  - Keep workflow permissions minimal (`contents:read`, `packages:write`).
 - Deploy DES on merge to `main`: `kubectl apply -f deploy/des -R` then smoke test `GET /q/health`.
 - Deploy PRD is **manual** (workflow_dispatch) with approval and `kubectl apply -f deploy/prd -R` reusing the image tag from CI.
 
