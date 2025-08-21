@@ -1,0 +1,52 @@
+# Java / Maven
+target/
+**/target/
+/.mvn/
+!.mvn/wrapper/maven-wrapper.jar
+
+# IDEs
+.idea/
+*.iml
+.vscode/
+*.class
+
+# Logs and temp
+*.log
+logs/
+*.tmp
+*.swp
+*.swx
+*.bak
+
+# Environment / secrets
+.env
+.env.*
+.secrets/
+*.secret
+
+# Docker
+docker-compose.override.yml
+.docker/
+
+# Misc build
+build/
+dist/
+
+# Docs: ignore developer notes by default; keep README tracked
+docs/DEV NOTES/*
+!docs/DEV NOTES/README.md
+
+# Local editor state
+*.local
+
+# k3d / kubernetes local artifacts (optional)
+.k3d/
+
+# Binary artifacts
+*.jar
+*.war
+
+# Ignore OS-specific mountpoint files sometimes created by k3d/containers
+**/.dockerenv
+
+# End of file
