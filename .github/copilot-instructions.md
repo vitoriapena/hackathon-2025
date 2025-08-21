@@ -18,7 +18,7 @@ deploy/
   base/                   # K8s base (deployment, service, ingress)
   des/                    # overlay for DES (plain YAML manifests)
   prd/                    # overlay for PRD (plain YAML manifests)
-.github/workflows/        # ci.yml, deploy-des.yml, deploy-prd.yml
+.github/workflows/        # ci.yaml, deploy-des.yaml, deploy-prd.yaml
 infra/k3d/                # k3d cluster config + scripts
 ```
 If you add files, follow this structure.
@@ -43,7 +43,7 @@ If you add files, follow this structure.
 - Don’t introduce CRDs or extra controllers unless explicitly requested.
 
 ## CI/CD (GitHub Actions)
-- CI (`.github/workflows/ci.yml`):
+- CI (`.github/workflows/ci.yaml`):
   - checkout (depth 0) → setup-java (Temurin 21) → `mvn test package`.
   - build Docker image → **Trivy image scan** (fail on HIGH/CRITICAL) → push to GHCR.
   - Keep workflow permissions minimal (`contents:read`, `packages:write`). Pin actions by SHA.
@@ -70,3 +70,5 @@ If you add files, follow this structure.
 
 ---
 These instructions live in `.github/copilot-instructions.md`. In VS Code you may also split rules into multiple files under `.github/instructions/*.instructions.md` using `applyTo` to target file patterns.
+
+<!-- NOTE: prefer `.yaml` extension for GitHub workflows (e.g. `.github/workflows/ci.yaml`). -->
