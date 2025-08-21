@@ -54,6 +54,7 @@ If you add files, follow this structure.
 - Keep PRs **small** and focused. Favor clear names, short methods, and Quarkus idioms.
 - Don’t change ports, health endpoints, or Quarkus packaging type (`fast-jar`) unless a requirement demands it.
 - Follow **Conventional Commits** and **SemVer** if you touch release/version files.
+- Before applying automated edits to repository files, list the files to change, explain the reason, and wait for explicit user approval ("LGTM") to proceed.
 
 ## What NOT to do
 - Do **not** add Helm charts, SealedSecrets, OPA, SBOM, or signing — these are out of scope.
