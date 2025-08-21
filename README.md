@@ -65,17 +65,22 @@ mvn -B -DskipTests=false package
 docker build -t ghcr.io/<org>/<repo>:<sha> .
 ```
 
-- Deploy DES (exemplo):
+- Deploy DES (exemplo — sequência declarativa):
 
 ```bash
-kubectl apply -f deploy/des -R
+kubectl apply -R -f deploy/base
+kubectl apply -R -f deploy/des
 kubectl -n des rollout status deploy/app
+# verificar smoke-job in-cluster
+kubectl -n des apply -f deploy/base/smoke-job.yaml
+kubectl -n des wait --for=condition=complete job/smoke-health --timeout=60s
+kubectl -n des get job smoke-health -o jsonpath='{.status.succeeded}'
 ```
 
-- Smoke test:
+- Smoke test (externo — fallback com --resolve):
 
 ```bash
-curl -fsS http://app.des.local/q/health
+curl --resolve app.des.local:80:127.0.0.1 http://app.des.local/q/health
 ```
 
 ## Observações sobre manifests e overlays
