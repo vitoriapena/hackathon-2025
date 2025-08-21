@@ -1,0 +1,10 @@
+# Example .trivyignore for acceptable findings - document each ignored rule
+# Only add entries here after careful review. Keep this file minimal.
+
+# Example: ignore a known false-positive CVE for an embedded build artifact (document justification)
+# CVE-XXXX-YYYYY # justification: false positive in offline build artifact
+
+# Example: ignore package match by path
+# /home/app/quarkus-app/lib/some-legacy-lib.jar
+
+# End of file
