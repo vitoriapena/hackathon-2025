@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: [ main ]
+    tags: [ 'v*.*.*' ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
@@ -17,7 +18,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  IMAGE: ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:${{ github.sha }}
+  IMAGE_REPO: ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}
 
 jobs:
   build:
@@ -55,20 +56,29 @@ jobs:
       # - name: Run CodeQL analysis
       #   uses: github/codeql-action/analyze@v3
 
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_REPO }}
+          tags: |
+            type=raw,value=${{ github.sha }}
+            type=ref,event=tag
+
       - name: Build container image (local, no push)
         uses: docker/build-push-action@v5
         with:
           context: .
           file: Dockerfile
           load: true
-          tags: ${{ env.IMAGE }}
+          tags: ${{ steps.meta.outputs.tags }}
           push: false
 
       - name: Trivy scan (fail on HIGH/CRITICAL)
         uses: aquasecurity/trivy-action@0.32.0
         with:
           scan-type: image
-          image-ref: ${{ env.IMAGE }}
+          image-ref: ${{ env.IMAGE_REPO }}:${{ github.sha }}
           format: table
           severity: HIGH,CRITICAL
           exit-code: '1'
@@ -86,8 +96,7 @@ jobs:
           context: .
           file: Dockerfile
           push: true
-          tags: |
-            ${{ env.IMAGE }}
+          tags: ${{ steps.meta.outputs.tags }}
         
       - name: Upload build metadata
         uses: actions/upload-artifact@v4
