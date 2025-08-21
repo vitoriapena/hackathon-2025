@@ -37,7 +37,7 @@ jobs:
           cache: maven
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v2
+        uses: github/codeql-action/init@v3
         with:
           languages: java
 
@@ -51,7 +51,7 @@ jobs:
           path: target/surefire-reports/*.xml
 
       - name: Run CodeQL analysis
-        uses: github/codeql-action/analyze@v2
+        uses: github/codeql-action/analyze@v3
 
       - name: Build container image (local, no push)
         uses: docker/build-push-action@v5
