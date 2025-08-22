@@ -18,115 +18,23 @@ param(
   [string]$PrdNamespace = 'prd',
   [switch]$ApprovePrd,
   [string]$TimeoutRollout = '120s',
-  [string]$TimeoutSmoke = '60s'
+  [string]$TimeoutSmoke = '60s',
+  [switch]$RunLocalSmoke,
+  [switch]$BuildOnly
 )
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
+. (Join-Path $PSScriptRoot 'common.ps1')
 
-try {
-  # Resolve repository root (script is in repo/scripts/ps)
-  if ($PSScriptRoot) {
-    $repoRoot = (Resolve-Path -Path (Join-Path $PSScriptRoot '..\..')) | Select-Object -ExpandProperty Path
-  } else {
-    $repoRoot = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
-  }
-} catch {
-  $repoRoot = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
-}
+$repoRoot = Resolve-RepoRoot -StartFrom $PSScriptRoot
 Set-Location -Path $repoRoot
-
-function Test-CommandRequired {
-  param([string]$Name)
-  if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
-    throw "Required command not found: $Name"
-  }
-}
-
-# Compatibility wrappers: some older scripts call these names. Keep small wrappers
-# so the script is forgiving to different function names.
-function Require-Cmd {
-  param([string]$Name)
-  Test-CommandRequired -Name $Name
-}
-
-# Remove diacritics (accents) and sanitize strings to valid docker repo/tag chars
-function Remove-Diacritics([string]$s) {
-  if (-not $s) { return $s }
-  # Normalize to FormD to separate base chars and diacritics
-  $norm = $s.Normalize([System.Text.NormalizationForm]::FormD)
-  $sb = New-Object System.Text.StringBuilder
-  foreach ($c in $norm.ToCharArray()) {
-    $cat = [Globalization.CharUnicodeInfo]::GetUnicodeCategory($c)
-    if ($cat -ne [Globalization.UnicodeCategory]::NonSpacingMark) { $sb.Append($c) | Out-Null }
-  }
-  return $sb.ToString().Normalize([System.Text.NormalizationForm]::FormC)
-}
-
-function Sanitize-Name([string]$s) {
-  if (-not $s) { return $s }
-  $noDi = Remove-Diacritics $s
-  $lower = $noDi.ToLowerInvariant()
-  # replace any char not in [a-z0-9._-] with '-'
-  $san = [regex]::Replace($lower, '[^a-z0-9\._-]+', '-')
-  # trim leading/trailing '-'
-  $san = $san.Trim('-')
-  if (-not $san) { throw "Sanitized name for '$s' is empty; provide explicit -Org/-Repo" }
-  return $san
-}
-
-function Get-OrgRepo {
-  try {
-    $url = git remote get-url origin 2>$null
-    if ($url) {
-      if ($url -match "[/:]{1}([^/]+)/([^/.]+)(\\.git)?$") {
-        return @($Matches[1], $Matches[2])
-      }
-    }
-  } catch { }
-  return $null
-}
-
-function Infer-OrgRepo {
-  # alias for Get-OrgRepo used by older script versions
-  return Get-OrgRepo
-}
-
-function Invoke-RenderManifestsEnv {
-  param(
-    [string]$ns,
-    [string]$outDir,
-    [string]$image
-  )
-  New-Item -ItemType Directory -Force -Path (Join-Path $outDir 'base') | Out-Null
-  New-Item -ItemType Directory -Force -Path (Join-Path $outDir 'overlay') | Out-Null
-  Copy-Item -Recurse -Force -Path (Join-Path $repoRoot 'deploy/base/*') -Destination (Join-Path $outDir 'base')
-  if (Test-Path (Join-Path $repoRoot "deploy/$ns")) {
-    Copy-Item -Recurse -Force -Path (Join-Path $repoRoot "deploy/$ns/*") -Destination (Join-Path $outDir 'overlay')
-  }
-  # Replace placeholders in all yaml files
-  Get-ChildItem -Recurse -Path $outDir -Include *.yaml,*.yml | ForEach-Object {
-    $content = Get-Content -Raw -Path $_.FullName
-    $content = $content -replace 'ghcr.io/<org>/<repo>:<sha>', $image
-    $content = $content -replace '\$\{NAMESPACE\}', $ns
-    Set-Content -NoNewline -Path $_.FullName -Value $content
-  }
-}
-
-function Render-ManifestsEnv {
-  param(
-    [string]$ns,
-    [string]$outDir,
-    [string]$image
-  )
-  Invoke-RenderManifestsEnv -ns $ns -outDir $outDir -image $image
-}
 
 # Preflight
 Require-Cmd mvn
 Require-Cmd docker
-Require-Cmd kubectl
 Require-Cmd git
+if (-not $BuildOnly) { Require-Cmd kubectl }
 
 # Tag
 if (-not $Tag) { $Tag = (git rev-parse --short HEAD).Trim() }
@@ -159,6 +67,30 @@ Write-Host "Will build image: $image (alias: $imageDes)"
 Write-Host '1) Maven build'; & mvn -B -DskipTests=false package
 Write-Host '2) Docker build'; & docker build -t $image .; & docker tag $image $imageDes
 
+if ($RunLocalSmoke) {
+  $name = 'local-app-smoke'
+  try { & docker rm -f $name | Out-Null } catch { }
+  Write-Host "Starting container $name (detached, non-root user 10001)"
+  $containerId = & docker run -d --name $name --user 10001 -p "8080:8080" $image
+  Write-Host "Container started: $containerId"
+  try {
+    Write-Host "Waiting for readiness endpoint http://localhost:8080/q/health/ready (timeout ${TimeoutSmoke})"
+  $timeoutSec = Parse-DurationSeconds -Value $TimeoutSmoke
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    while ($sw.Elapsed.TotalSeconds -lt $timeoutSec) {
+      try {
+        $resp = Invoke-WebRequest -UseBasicParsing -Uri 'http://localhost:8080/q/health/ready' -TimeoutSec 5
+        if ($resp.StatusCode -eq 200) { Write-Host 'Smoke test: READY OK'; break }
+      } catch { }
+      Start-Sleep -Seconds 2
+    }
+    if ($sw.Elapsed.TotalSeconds -ge $timeoutSec) { throw "Smoke test failed: readiness endpoint did not become ready within ${TimeoutSmoke}" }
+  }
+  finally { try { & docker rm -f $name | Out-Null } catch { } }
+}
+
+if ($BuildOnly) { Write-Host 'BuildOnly set; skipping deploy.'; return }
+
 # Import into k3d if present
 $haveK3d = $false
 if (Get-Command k3d -ErrorAction SilentlyContinue) { $haveK3d = $true }
@@ -177,15 +109,9 @@ $root = New-Item -ItemType Directory -Force -Path (Join-Path ([System.IO.Path]::
 $desTmp = Join-Path $root 'des'
 $prdTmp = Join-Path $root 'prd'
 Write-Host "4) Rendering manifests (DES -> $desTmp, PRD -> $prdTmp)"
-Render-ManifestsEnv -ns $DesNamespace -outDir $desTmp -image $image
-Render-ManifestsEnv -ns $PrdNamespace -outDir $prdTmp -image $image
+Render-ManifestsEnv -RepoRoot $repoRoot -Namespace $DesNamespace -OutDir $desTmp -Image $image
+Render-ManifestsEnv -RepoRoot $repoRoot -Namespace $PrdNamespace -OutDir $prdTmp -Image $image
 
-function Use-K3dContext([string]$cluster) {
-  $ctx = "k3d-$cluster"
-  $names = (& kubectl config get-contexts -o name) -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ }
-  if ($names -contains $ctx) { & kubectl config use-context $ctx | Out-Null; return $true }
-  return $false
-}
 
 function Deploy-Env([string]$cluster, [string]$ns, [string]$envTmp) {
   Write-Host "==> Deploying to cluster '$cluster' namespace '$ns'"

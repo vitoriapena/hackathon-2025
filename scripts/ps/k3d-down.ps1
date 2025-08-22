@@ -11,6 +11,8 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
+. (Join-Path $PSScriptRoot 'common.ps1')
+
 $hostsPath = 'C:\Windows\System32\drivers\etc\hosts'
 $beginMarker = '# >>> hackathon-2025 hosts BEGIN'
 $endMarker = '# <<< hackathon-2025 hosts END'
