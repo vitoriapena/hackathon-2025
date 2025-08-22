@@ -1,8 +1,8 @@
 #!/usr/bin/env pwsh
-<#!
+<#
   scripts/ps/k3d-up.ps1
   Create/ensure a k3d cluster exists and update Windows hosts file from infra/k3d/hosts.conf.
-!>
+#>
 
 param(
   [string]$ClusterName = 'hackathon-k3d'
@@ -12,10 +12,21 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
 function Require-Cmd($name) { if (-not (Get-Command $name -ErrorAction SilentlyContinue)) { throw "Required command not found: $name" } }
-Require-Cmd k3d
-Require-Cmd kubectl
+$RequireCmd = 'k3d','kubectl'
+foreach ($c in $RequireCmd) { if (-not (Get-Command $c -ErrorAction SilentlyContinue)) { throw "Required command not found: $c" } }
 
-$repoRoot = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
+function Get-RepoRoot {
+  # Start from script directory and walk up until we find a repository marker (pom.xml or .git)
+  $dir = Split-Path -Parent $PSCommandPath
+  while ($dir -and ($dir -ne [System.IO.Path]::GetPathRoot($dir))) {
+  if ((Test-Path (Join-Path $dir 'pom.xml')) -or (Test-Path (Join-Path $dir '.git'))) { return $dir }
+    $dir = Split-Path -Parent $dir
+  }
+  # fallback to three levels up (original scripts/ -> repo root)
+  return Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSCommandPath))
+}
+
+$repoRoot = Get-RepoRoot
 $k3dConfig = Join-Path $repoRoot 'infra/k3d/cluster.yaml'
 $hostsFileConf = Join-Path $repoRoot 'infra/k3d/hosts.conf'
 $hostsPath = 'C:\Windows\System32\drivers\etc\hosts'
@@ -54,8 +65,13 @@ if (Test-Path $hostsFileConf) {
   $newContent += $beginMarker
   $newContent += $hostsBodyLines
   $newContent += $endMarker
-  Set-Content -Path $hostsPath -Value ($newContent -join "`n") -Encoding ascii
-  Write-Host "Hosts file updated."
+  try {
+    Set-Content -Path $hostsPath -Value ($newContent -join "`n") -Encoding ascii
+    Write-Host "Hosts file updated."
+  } catch {
+    Write-Host "Failed to update hosts file: $($_.Exception.Message)"
+    Write-Host "You can re-run this script from an elevated PowerShell (Run as Administrator) to update $hostsPath, or copy the contents of infra/k3d/hosts.conf into the hosts file manually."
+  }
 } else {
   Write-Host "No hosts.conf found; skipping hosts update"
 }

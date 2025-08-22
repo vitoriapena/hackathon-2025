@@ -1,8 +1,8 @@
 #!/usr/bin/env pwsh
-<#!
+<#
   scripts/ps/k3d-down.ps1
   Delete the k3d cluster (if exists) and remove hosts block from Windows hosts file.
-!>
+#>
 
 param(
   [string]$ClusterName = 'hackathon-k3d'

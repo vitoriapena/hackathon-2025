@@ -1,5 +1,5 @@
 #!/usr/bin/env pwsh
-<#!
+<#
   scripts/ps/build-deploy-local.ps1
   Build Maven, build/tag Docker image, optionally import into k3d, render YAMLs (base + overlay), deploy to DES and optionally PRD, run smoke job.
   Requires: PowerShell 7+, Maven, Docker, kubectl, Git, (optional) k3d.
@@ -7,7 +7,7 @@
   Examples:
     pwsh -File scripts/ps/build-deploy-local.ps1 -Org myorg -Repo myrepo
     pwsh -File scripts/ps/build-deploy-local.ps1 -ApprovePrd
-!>
+#>
 
 param(
   [string]$Org,
@@ -24,20 +24,62 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
-$repoRoot = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
+try {
+  # Resolve repository root (script is in repo/scripts/ps)
+  if ($PSScriptRoot) {
+    $repoRoot = (Resolve-Path -Path (Join-Path $PSScriptRoot '..\..')) | Select-Object -ExpandProperty Path
+  } else {
+    $repoRoot = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
+  }
+} catch {
+  $repoRoot = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
+}
 Set-Location -Path $repoRoot
 
-function Require-Cmd($name) {
-  if (-not (Get-Command $name -ErrorAction SilentlyContinue)) {
-    throw "Required command not found: $name"
+function Test-CommandRequired {
+  param([string]$Name)
+  if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
+    throw "Required command not found: $Name"
   }
 }
 
-function Infer-OrgRepo {
+# Compatibility wrappers: some older scripts call these names. Keep small wrappers
+# so the script is forgiving to different function names.
+function Require-Cmd {
+  param([string]$Name)
+  Test-CommandRequired -Name $Name
+}
+
+# Remove diacritics (accents) and sanitize strings to valid docker repo/tag chars
+function Remove-Diacritics([string]$s) {
+  if (-not $s) { return $s }
+  # Normalize to FormD to separate base chars and diacritics
+  $norm = $s.Normalize([System.Text.NormalizationForm]::FormD)
+  $sb = New-Object System.Text.StringBuilder
+  foreach ($c in $norm.ToCharArray()) {
+    $cat = [Globalization.CharUnicodeInfo]::GetUnicodeCategory($c)
+    if ($cat -ne [Globalization.UnicodeCategory]::NonSpacingMark) { $sb.Append($c) | Out-Null }
+  }
+  return $sb.ToString().Normalize([System.Text.NormalizationForm]::FormC)
+}
+
+function Sanitize-Name([string]$s) {
+  if (-not $s) { return $s }
+  $noDi = Remove-Diacritics $s
+  $lower = $noDi.ToLowerInvariant()
+  # replace any char not in [a-z0-9._-] with '-'
+  $san = [regex]::Replace($lower, '[^a-z0-9\._-]+', '-')
+  # trim leading/trailing '-'
+  $san = $san.Trim('-')
+  if (-not $san) { throw "Sanitized name for '$s' is empty; provide explicit -Org/-Repo" }
+  return $san
+}
+
+function Get-OrgRepo {
   try {
     $url = git remote get-url origin 2>$null
     if ($url) {
-      if ($url -match "[/:]{1}([^/]+)/([^/.]+)(\.git)?$") {
+      if ($url -match "[/:]{1}([^/]+)/([^/.]+)(\\.git)?$") {
         return @($Matches[1], $Matches[2])
       }
     }
@@ -45,7 +87,17 @@ function Infer-OrgRepo {
   return $null
 }
 
-function Render-ManifestsEnv([string]$ns, [string]$outDir, [string]$image) {
+function Infer-OrgRepo {
+  # alias for Get-OrgRepo used by older script versions
+  return Get-OrgRepo
+}
+
+function Invoke-RenderManifestsEnv {
+  param(
+    [string]$ns,
+    [string]$outDir,
+    [string]$image
+  )
   New-Item -ItemType Directory -Force -Path (Join-Path $outDir 'base') | Out-Null
   New-Item -ItemType Directory -Force -Path (Join-Path $outDir 'overlay') | Out-Null
   Copy-Item -Recurse -Force -Path (Join-Path $repoRoot 'deploy/base/*') -Destination (Join-Path $outDir 'base')
@@ -59,6 +111,15 @@ function Render-ManifestsEnv([string]$ns, [string]$outDir, [string]$image) {
     $content = $content -replace '\$\{NAMESPACE\}', $ns
     Set-Content -NoNewline -Path $_.FullName -Value $content
   }
+}
+
+function Render-ManifestsEnv {
+  param(
+    [string]$ns,
+    [string]$outDir,
+    [string]$image
+  )
+  Invoke-RenderManifestsEnv -ns $ns -outDir $outDir -image $image
 }
 
 # Preflight
@@ -75,10 +136,23 @@ if (-not $Org -or -not $Repo) {
   $inferred = Infer-OrgRepo
   if ($inferred) { $Org = $Org ? $Org : $inferred[0]; $Repo = $Repo ? $Repo : $inferred[1] }
 }
-if (-not $Org -or -not $Repo) { throw 'ORG and REPO not set and could not be inferred. Use -Org and -Repo.' }
+  if (-not $Org -or -not $Repo) {
+    # Fallbacks to be tolerant on local machines without a git remote.
+    if (-not $Repo) { $Repo = Split-Path -Leaf $repoRoot }
+    if (-not $Org) {
+      $candidate = (git config user.name 2>$null) -as [string]
+      if (-not $candidate) { $candidate = $env:USERNAME }
+      if (-not $candidate) { $candidate = 'local' }
+      $Org = $candidate
+    }
+    Write-Warning "ORG/REPO not found from git remote; falling back to Org='$Org' Repo='$Repo'. To be explicit, pass -Org and -Repo to the script."
+}
 
-$image = "ghcr.io/$Org/$Repo:$Tag"
-$imageDes = "ghcr.io/$Org/$Repo:des"
+$orgNorm = Sanitize-Name $Org
+$repoNorm = Sanitize-Name $Repo
+$tagNorm = Sanitize-Name $Tag
+$image = "ghcr.io/${orgNorm}/${repoNorm}:${tagNorm}"
+$imageDes = "ghcr.io/${orgNorm}/${repoNorm}:des"
 Write-Host "Will build image: $image (alias: $imageDes)"
 
 # Build

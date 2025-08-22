@@ -1,11 +1,11 @@
 #!/usr/bin/env pwsh
-<#!
+<#
   scripts/ps/build-local.ps1
   Build the project, build a Docker image and run it detached to perform a smoke test on Windows (PowerShell 7+).
   Usage examples:
     pwsh -File scripts/ps/build-local.ps1
     pwsh -File scripts/ps/build-local.ps1 -Image ghcr.io/org/repo:dev -NoClean
-!>
+#>
 
 param(
   [string]$Image = "local-app:dev",
