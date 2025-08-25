@@ -81,16 +81,38 @@ function Render-ManifestsEnv {
     [Parameter(Mandatory)][string]$OutDir,
     [Parameter(Mandatory)][string]$Image
   )
-  New-Item -ItemType Directory -Force -Path (Join-Path $OutDir 'base') | Out-Null
-  New-Item -ItemType Directory -Force -Path (Join-Path $OutDir 'overlay') | Out-Null
-  Copy-Item -Recurse -Force -Path (Join-Path $RepoRoot 'deploy/base/*') -Destination (Join-Path $OutDir 'base')
-  $overlayPath = Join-Path $RepoRoot (Join-Path 'deploy' $Namespace)
-  if (Test-Path $overlayPath) { Copy-Item -Recurse -Force -Path (Join-Path $overlayPath '*') -Destination (Join-Path $OutDir 'overlay') }
-  Get-ChildItem -Recurse -Path $OutDir -Include *.yaml,*.yml | ForEach-Object {
-    $content = Get-Content -Raw -Path $_.FullName
-    $content = $content -replace 'ghcr.io/<org>/<repo>:<sha>', $Image
-    $content = $content -replace '\$\{NAMESPACE\}', $Namespace
-    Set-Content -NoNewline -Path $_.FullName -Value $content
+  $baseDir = Join-Path $RepoRoot 'deploy/base'
+  $envDir = Join-Path $RepoRoot "deploy" $Namespace
+
+  # 1. Ensure output directory exists
+  if (-not (Test-Path $OutDir)) { New-Item -ItemType Directory -Force -Path $OutDir | Out-Null }
+
+  # 2. Copy base files if present (optional)
+  if (Test-Path $baseDir) {
+    Copy-Item -Path (Join-Path $baseDir '*') -Destination $OutDir -Recurse -Force
+  }
+
+  # 3. Copy all environment-specific files (must exist)
+  if (Test-Path $envDir) {
+    Copy-Item -Path (Join-Path $envDir '*') -Destination $OutDir -Recurse -Force
+  } else {
+    throw "Environment directory not found: $envDir"
+  }
+
+  # 4. Define placeholder values
+  $values = @{
+    'NAMESPACE' = $Namespace
+    'IMAGE'     = $Image
+  }
+
+  # 5. Replace placeholders in all copied files
+  Get-ChildItem -Path $OutDir -Recurse -File -Include *.yaml,*.yml | ForEach-Object {
+    $content = Get-Content $_.FullName -Raw
+    foreach ($key in $values.Keys) {
+      $placeholder = '${' + $key + '}'
+      $content = $content.Replace($placeholder, $values[$key])
+    }
+    Set-Content -Path $_.FullName -Value $content
   }
 }
 

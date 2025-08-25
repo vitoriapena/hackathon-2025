@@ -4,7 +4,8 @@ metadata:
   name: app
   namespace: ${NAMESPACE}
   labels:
-    app: app
+    app.kubernetes.io/name: getting-started
+    app.kubernetes.io/instance: app
 spec:
   type: ClusterIP
   ports:
@@ -13,4 +14,5 @@ spec:
       protocol: TCP
       name: http
   selector:
-    app: getting-started
+    app.kubernetes.io/name: getting-started
+    app.kubernetes.io/instance: app
