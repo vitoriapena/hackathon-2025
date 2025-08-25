@@ -20,7 +20,9 @@ param(
   [string]$TimeoutRollout = '120s',
   [string]$TimeoutSmoke = '60s',
   [switch]$RunLocalSmoke,
-  [switch]$BuildOnly
+  [switch]$BuildOnly,
+  [switch]$SkipTrivy,
+  [string]$TrivySeverity = 'HIGH,CRITICAL'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -35,6 +37,7 @@ Require-Cmd mvn
 Require-Cmd docker
 Require-Cmd git
 if (-not $BuildOnly) { Require-Cmd kubectl }
+if (-not $SkipTrivy) { Require-Cmd trivy }
 
 # Tag
 if (-not $Tag) { $Tag = (git rev-parse --short HEAD).Trim() }
@@ -70,6 +73,21 @@ Write-Host ''
 Write-Host '2) Docker build' -ForegroundColor Green; Write-Host ''
 & docker build -t $image .; & docker tag $image $imageDes
 
+# Trivy image scan (optional)
+Write-Host ''
+Write-Host '3) Trivy image scan' -ForegroundColor Green; Write-Host ''
+if ($SkipTrivy) {
+  Write-Host 'Trivy scan skipped (-SkipTrivy).'
+} else {
+  # Fail on HIGH/CRITICAL (default) or custom severities; no progress bar for cleaner logs
+  & trivy image --severity $TrivySeverity --exit-code 1 --no-progress $image
+  if ($LASTEXITCODE -ne 0) {
+    throw "Trivy scan failed (exit code $LASTEXITCODE) for image $image"
+  } else {
+    Write-Host "Trivy scan passed for $image (severity filter: $TrivySeverity)" -ForegroundColor DarkGray
+  }
+}
+
 if ($RunLocalSmoke) {
   $name = 'local-app-smoke'
   try { & docker rm -f $name | Out-Null } catch { }
@@ -103,13 +121,13 @@ if (Get-Command k3d -ErrorAction SilentlyContinue) { $haveK3d = $true }
 if ($haveK3d) {
   try {
     Write-Host ''
-    Write-Host "3) Importing images into k3d cluster '$K3dCluster'" -ForegroundColor Green; Write-Host ''
+    Write-Host "4) Importing images into k3d cluster '$K3dCluster'" -ForegroundColor Green; Write-Host ''
     & k3d image import $image --cluster $K3dCluster | Out-Null
     & k3d image import $imageDes --cluster $K3dCluster | Out-Null
   } catch { Write-Warning "Failed to import images into k3d cluster '$K3dCluster'" }
 } else {
   Write-Host ''
-  Write-Host '3) k3d not available. Ensure the image is reachable by the cluster (push to registry).' -ForegroundColor Green; Write-Host ''
+  Write-Host '4) k3d not available. Ensure the image is reachable by the cluster (push to registry).' -ForegroundColor Green; Write-Host ''
 }
 
 # Render manifests
@@ -117,7 +135,7 @@ $root = New-Item -ItemType Directory -Force -Path (Join-Path ([System.IO.Path]::
 $desTmp = Join-Path $root 'des'
 $prdTmp = Join-Path $root 'prd'
 Write-Host ''
-Write-Host "4) Rendering manifests (DES -> $desTmp, PRD -> $prdTmp)" -ForegroundColor Green; Write-Host ''
+Write-Host "5) Rendering manifests (DES -> $desTmp, PRD -> $prdTmp)" -ForegroundColor Green; Write-Host ''
 Render-ManifestsEnv -RepoRoot $repoRoot -Namespace $DesNamespace -OutDir $desTmp -Image $image
 Render-ManifestsEnv -RepoRoot $repoRoot -Namespace $PrdNamespace -OutDir $prdTmp -Image $image
 
@@ -226,7 +244,7 @@ function Test-IngressEndpoint([string]$Namespace, [string]$TimeoutSmoke) {
 }
 
 Write-Host ''
-Write-Host "5) Deploying to DES (cluster=$K3dCluster ns=$DesNamespace)" -ForegroundColor Green; Write-Host ''
+Write-Host "6) Deploying to DES (cluster=$K3dCluster ns=$DesNamespace)" -ForegroundColor Green; Write-Host ''
 Use-K3dContext $K3dCluster | Out-Null
 Deploy-Env -cluster $K3dCluster -ns $DesNamespace -envTmp $desTmp
 Write-Host 'DES deploy complete.'
@@ -256,7 +274,7 @@ if ($ApprovePrd) { $doPrd = $true } else {
 
 if ($doPrd) {
   Write-Host ''
-  Write-Host "6) Deploying to PRD (cluster=$K3dCluster ns=$PrdNamespace)" -ForegroundColor Green; Write-Host ''
+  Write-Host "7) Deploying to PRD (cluster=$K3dCluster ns=$PrdNamespace)" -ForegroundColor Green; Write-Host ''
   Use-K3dContext $K3dCluster | Out-Null
   Deploy-Env -cluster $K3dCluster -ns $PrdNamespace -envTmp $prdTmp
   Write-Host 'PRD deploy complete.'
