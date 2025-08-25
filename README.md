@@ -11,6 +11,7 @@ Repositório com a aplicação Quarkus "Getting Started" preparada para build, c
 - [Como executar (resumo rápido)](#como-executar-resumo-rápido)
 - [Observações sobre manifests e overlays](#observações-sobre-manifests-e-overlays)
 - [CI/CD](#cicd)
+- [Resumo das mudanças (commits recentes)](#resumo-das-mudanças-commits-recentes)
 - [Onde ler mais](#onde-ler-mais)
 - [Contribuição](#contribuição)
 
@@ -30,6 +31,13 @@ Repositório com a aplicação Quarkus "Getting Started" preparada para build, c
 - Criação de PRDs com o apoio de IA generativa
 - Revisão e adaptação dos PRDs
 - Definição do `copilot-instructions.md`
+- PRD-01: Cluster k3d local — criação e validação do cluster local
+- PRD-02: Build & Package Quarkus — Maven com Java 21 e testes
+- PRD-03: Containerização e Registro — Dockerfile multi-stage e push para GHCR
+- PRD-04: CI GitHub Actions — build, test, Trivy scan e publicação
+- PRD-05: Deploy DES — namespaces, service, deployment e smoke job
+- PRD-06: Deploy PRD com aprovação — gatilho manual reutilizando a imagem do CI
+- PRD-07: Versionamento & Documentação — SemVer/Conventional Commits e README final
 
 ## Pré-requisitos
 
@@ -113,10 +121,24 @@ Dica: para um fluxo automatizado (build → DES → aprovação para PRD), use `
 - Deploy automático para DES: merge em `main` → `kubectl apply -f deploy/des -R` e smoke test
 - Deploy para PRD: manual via `workflow_dispatch` com aprovação; usa a mesma imagem publicada pelo CI
 
+## Resumo das mudanças (commits recentes)
+
+- Base/Build: app Quarkus adicionada; Maven e compilação em Java 21; testes habilitados.
+- Health: dependência `quarkus-smallrye-health` para expor `/q/health`.
+- Container/Segurança: Dockerfile multi-stage Temurin 21; Trivy trocado para a action oficial; ajustes de referências e `.trivyignore`.
+- CI: Workflow de build/test/scan/push; CodeQL comentado por permissões; correções em paths de artefatos e `fetch-depth`.
+- k3d/Deploy: setup local k3d; manifests base (namespaces, service, deployment, smoke job); scripts de build/deploy locais.
+- CD: pipeline efêmero com k3d — DES automático após CI verde; PRD manual com aprovação; criação do tag `:des` pós-deploy.
+- Confiabilidade: namespace dinâmico, robustez no import de imagem no k3d, retry no smoke job e correções menores.
+
 ## Onde ler mais
 
 - PRDs detalhados: `docs/PRDs/`
+- Guia de cluster k3d: `docs/cluster.md`
+- Guia de build: `docs/build.md`
+- Execução local: `docs/local.md`
 - Guia de deploy local: `docs/deploy.md`
+- CD efêmero (GitHub Actions): `docs/cd-ephemeral-actions.md`
 - Instruções do Copilot: `.github/copilot-instructions.md`
 
 ## Contribuição
