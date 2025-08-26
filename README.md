@@ -53,7 +53,7 @@ Repositório com a aplicação Quarkus "Getting Started" preparada para build, c
 - `Dockerfile` — build multi-stage
 - `deploy/`
   - `base/` — manifests genéricos (`deployment.yaml`, `service.yaml`, `namespaces.yaml`, `smoke-job.yaml`) com `${NAMESPACE}`
-  - `des/` — manifests de ambiente (ex.: `deployment-des.yaml` com `image:` definido)
+  - `des/` — manifests de ambiente (ex.: `deploy/des/deployment.yaml` com `image:` definido)
   - `prd/` — manifests de produção simulada
 - `.github/workflows/` — workflows CI e deploy
 - `infra/k3d/` — config e scripts para criar o cluster local

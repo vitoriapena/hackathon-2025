@@ -4,11 +4,11 @@
 Promover a mesma imagem aprovada em DES para `prd` mediante aprovação manual.
 
 ## Escopo
-- **Overlay** `deploy/prd/` com manifests YAML específicos (p.ex. `deployment-prd.yaml`):
+- **Overlay** `deploy/prd/` com manifests YAML específicos (p.ex. `deploy/prd/deployment.yaml`):
   - Réplicas `2`.
   - Host `app.prd.local`.
   - Variáveis de configuração para “produção simulada”.
-- Workflow `deploy-prd.yml`:
+- Workflow `cd.yaml` (job PRD manual):
   - `workflow_dispatch` com input `imageTag`.
   - **Environment protection** com reviewers obrigatórios.
   - `kubectl apply -f deploy/prd -R` + `kubectl rollout status` + smoke (`/q/health`).

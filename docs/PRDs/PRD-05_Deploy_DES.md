@@ -6,13 +6,13 @@ Implantar automaticamente em `des` após merge na `main` usando apenas YAMLs pur
 ## Escopo
 - **Manifests Kubernetes** em `deploy/base/`:
   - `deployment.yaml`, `service.yaml`, `ingress.yaml`.
-- Ambiente `deploy/des/` com manifests específicos (p.ex. `deployment-des.yaml`) — não usar ferramentas adicionais:
-  - Definir `image: ghcr.io/<org>/<repo>:<sha>` diretamente no `deployment-des.yaml`.
+- Ambiente `deploy/des/` com manifests específicos (p.ex. `deploy/des/deployment.yaml`) — não usar ferramentas adicionais:
+  - Definir `image: ghcr.io/<org>/<repo>:<sha>` diretamente no `deploy/des/deployment.yaml`.
   - Réplica única, requests/limits leves.
   - Probes (`/q/health` do Quarkus).
   - Ingress host `app.des.local`.
 
-## Pipeline (workflow `deploy-des.yml`)
+## Pipeline (workflow `cd.yaml` — etapa DES)
 - Disparo: `push` para `main`.
 - Runner: **self-hosted** com acesso ao kubeconfig do k3d.
 - Passos: checkout → `kubectl apply -f deploy/des -R` → `kubectl -n des rollout status deploy/app` → smoke (`curl http://app.des.local/q/health`).
