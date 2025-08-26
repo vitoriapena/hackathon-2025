@@ -63,7 +63,11 @@ jobs:
           images: ${{ env.IMAGE_REPO }}
           tags: |
             type=raw,value=${{ github.sha }}
-            type=ref,event=tag
+            # When pushing a SemVer tag (e.g., v1.2.3), also publish SemVer-friendly aliases
+            type=ref,event=tag              # v1.2.3
+            type=semver,pattern={{version}} # 1.2.3
+            type=semver,pattern={{major}}.{{minor}} # 1.2
+            type=semver,pattern={{major}}   # 1
 
       - name: Build container image (local, no push)
         uses: docker/build-push-action@v5
