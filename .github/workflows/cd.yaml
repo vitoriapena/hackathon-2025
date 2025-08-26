@@ -111,15 +111,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Validate image exists
         run: |
           set -e
           echo "Validating image $IMAGE is available in GHCR..."
-          docker manifest inspect "$IMAGE" >/dev/null 2>&1 || {
+          # Use crane to inspect image metadata without exposing sensitive auth details
+          if ! docker buildx imagetools inspect "$IMAGE" --format '{{.Name}}' >/dev/null 2>&1; then
             echo "Image tag not found: $IMAGE" >&2
             echo "Tip: create a git tag (vX.Y.Z), let CI publish images, then retry." >&2
             exit 1
-          }
+          fi
+          echo "Image validation successful"
 
       - name: Install k3d and envsubst
         run: |
