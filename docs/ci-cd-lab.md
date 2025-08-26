@@ -5,7 +5,7 @@ Este lab mostra, passo a passo, como nosso pipeline de CI/CD funciona e como voc
 ## O que você vai aprender
 
 - CI: build/test do Quarkus (Java 21), build da imagem, scan de segurança com Trivy e push para o GHCR.
-- CD DES: ao terminar o CI com sucesso no branch main, um workflow cria um k3d efêmero, importa a imagem, aplica os manifests (namespaces, service, ingress, deployment) e roda um smoke test.
+- CD DES: ao terminar o CI com sucesso no branch main, um workflow cria um k3d efêmero, importa a imagem, aplica os manifestos (namespaces, service, ingress, deployment) e roda um smoke test.
 - CD PRD: acionamento manual (com aprovação) reutilizando a mesma imagem publicada pelo CI.
 
 ## Conceitos rápidos
