@@ -92,7 +92,7 @@ if ($RunLocalSmoke) {
   $name = 'local-app-smoke'
   try { & docker rm -f $name | Out-Null } catch { }
   Write-Host "Starting container $name (detached, non-root user 10001)"
-  & docker run -d --name $name --user 10001 -p "8080:8080" $image | Out-Null
+  $containerId = & docker run -d --name $name --user 10001 -p "8080:8080" $image
   Write-Host "Container started."
   try {
     Write-Host "Waiting for readiness endpoint http://localhost:8080/q/health/ready (timeout ${TimeoutSmoke})"
