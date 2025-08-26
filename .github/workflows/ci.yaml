@@ -38,7 +38,7 @@ jobs:
         id: version
         run: |
           # Get the latest tag that matches semantic versioning
-          LATEST_TAG=$(git tag -l 'v*.*.*' --sort=-version:refname | head -n 1)
+          LATEST_TAG=$(git tag -l 'v*.*.*' | sort -V | tail -n 1)
           
           if [ -z "$LATEST_TAG" ]; then
             # No previous tags, start with v0.0.1
