@@ -7,8 +7,8 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'SemVer da imagem para PRD (ex.: v1.2.3 ou 1.2.3)'
-        required: true
+        description: 'SemVer da imagem para PRD (ex.: v1.2.3 ou 1.2.3). Deixe vazio para usar o mais recente do CI.'
+        required: false
         default: ''
 
 permissions:
@@ -104,10 +104,39 @@ jobs:
     runs-on: ubuntu-latest
     environment: prd
     env:
-      IMAGE: ghcr.io/${{ github.repository }}:${{ inputs.version }}
       NAMESPACE: prd
       CLUSTER_NAME: hackathon-k3d-ephemeral
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version to deploy
+        id: version
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            # User provided a version
+            VERSION="${{ inputs.version }}"
+            # Ensure it starts with 'v' for consistency
+            if [[ ! "$VERSION" =~ ^v ]]; then
+              VERSION="v$VERSION"
+            fi
+          else
+            # Auto-detect latest version from tags
+            VERSION=$(git tag -l 'v*.*.*' --sort=-version:refname | head -n 1)
+            if [ -z "$VERSION" ]; then
+              echo "No version tags found and no version provided" >&2
+              exit 1
+            fi
+          fi
+          
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Using version: $VERSION"
+
+      - name: Set image environment
+        run: |
+          echo "IMAGE=ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }}" >> $GITHUB_ENV
       - name: Checkout
         uses: actions/checkout@v4
 
