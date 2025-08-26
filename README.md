@@ -121,6 +121,8 @@ Dica: para um fluxo automatizado (build → DES → aprovação para PRD), use `
 - Deploy automático para DES: merge em `main` → `kubectl apply -f deploy/des -R` e smoke test
 - Deploy para PRD: manual via `workflow_dispatch` com aprovação; usa a mesma imagem publicada pelo CI
 
+Aprenda o passo a passo no guia: `docs/ci-cd-lab.md`.
+
 ## Resumo das mudanças (commits recentes)
 
 - Base/Build: app Quarkus adicionada; Maven e compilação em Java 21; testes habilitados.
