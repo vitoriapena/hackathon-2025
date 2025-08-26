@@ -135,3 +135,23 @@ scripts/bash/k3d-down.sh
 - Hosts/Traefik: confirme que `infra/k3d/hosts.conf` foi aplicado ao `/etc/hosts` pelo `k3d-up.sh`.
 - Imagem não encontrada: importe com `k3d image import ...` ou faça push para GHCR e ajuste `IMAGE_TAG`.
 - Variáveis: os YAMLs em `deploy/base/` exigem `NAMESPACE` ao aplicar manualmente; use `envsubst` como nos exemplos.
+
+## Releases e deploy PRD com SemVer
+
+O pipeline de CI agora publica imagens no GHCR com tags SemVer quando você cria um tag git `vX.Y.Z`:
+
+- ghcr.io/<org>/<repo>:v1.2.3 (ref do tag)
+- ghcr.io/<org>/<repo>:1.2.3
+- ghcr.io/<org>/<repo>:1.2
+- ghcr.io/<org>/<repo>:1
+- E também a tag com o SHA do commit para rastreabilidade
+
+Como criar um release/tag:
+
+```powershell
+git fetch --all
+git tag -a v1.2.3 -m "Release 1.2.3"
+git push origin v1.2.3
+```
+
+Após o CI concluir, para rodar o PRD manualmente (Actions → CD → Run workflow), informe apenas a versão no campo `version` (ex.: `v1.2.3`). O workflow monta automaticamente a imagem: `ghcr.io/<org>/<repo>:v1.2.3`, valida a existência da tag no GHCR e executa o deploy PRD (com aprovação do ambiente).

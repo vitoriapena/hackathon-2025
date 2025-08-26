@@ -6,8 +6,8 @@ on:
     types: [completed]
   workflow_dispatch:
     inputs:
-      image:
-        description: 'Full image tag for PRD (e.g., ghcr.io/<org>/<repo>:<sha>)'
+      version:
+        description: 'SemVer da imagem para PRD (ex.: v1.2.3 ou 1.2.3)'
         required: true
         default: ''
 
@@ -104,12 +104,22 @@ jobs:
     runs-on: ubuntu-latest
     environment: prd
     env:
-      IMAGE: ${{ inputs.image }}
+      IMAGE: ghcr.io/${{ github.repository }}:${{ inputs.version }}
       NAMESPACE: prd
       CLUSTER_NAME: hackathon-k3d-ephemeral
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Validate image exists
+        run: |
+          set -e
+          echo "Validating image $IMAGE is available in GHCR..."
+          docker manifest inspect "$IMAGE" >/dev/null 2>&1 || {
+            echo "Image tag not found: $IMAGE" >&2
+            echo "Tip: create a git tag (vX.Y.Z), let CI publish images, then retry." >&2
+            exit 1
+          }
 
       - name: Install k3d and envsubst
         run: |
