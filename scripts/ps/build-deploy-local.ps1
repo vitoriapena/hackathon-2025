@@ -92,7 +92,7 @@ if ($RunLocalSmoke) {
   $name = 'local-app-smoke'
   try { & docker rm -f $name | Out-Null } catch { }
   Write-Host "Starting container $name (detached, non-root user 10001)"
-  $containerId = & docker run -d --name $name --user 10001 -p "8080:8080" $image
+  & docker run -d --name $name --user 10001 -p "8080:8080" $image | Out-Null
   Write-Host "Container started."
   try {
     Write-Host "Waiting for readiness endpoint http://localhost:8080/q/health/ready (timeout ${TimeoutSmoke})"
@@ -161,14 +161,9 @@ function Deploy-Env([string]$cluster, [string]$ns, [string]$envTmp) {
     Write-Warning "Detected immutable selector change for deployment 'app' in namespace '$ns'. Recreating it to align labels."
     try {
       & kubectl -n $ns delete deploy app --ignore-not-found --wait=$true | Out-Null
-    } catch { Write-Warning "Failed to delete existing deployment 'app' in '$ns': $($_.Exception.Message)" }
-    $deployFiles = Get-ChildItem -Path $envTmp -Recurse -File -Include 'deployment.yaml','*deployment*.yaml' -ErrorAction SilentlyContinue
-    if ($deployFiles) {
-      foreach ($f in $deployFiles) { & kubectl -n $ns apply -f $($f.FullName) | Out-Null }
-      Write-Host "Recreated deployment from: $($deployFiles | Select-Object -ExpandProperty FullName -First 1)"
-    } else {
-      Write-Warning "No deployment YAML found in '$envTmp' to recreate deployment."
-    }
+      Write-Host "Re-applying deployment for '$ns'..."
+      & kubectl apply -R -f $envTmp | Out-Null
+    } catch { Write-Warning "Failed to recreate deployment 'app' in '$ns': $($_.Exception.Message)" }
   }
 
   Write-Host "Waiting for rollout of deploy/app in '$ns'"; & kubectl -n $ns rollout status deploy/app --timeout $TimeoutRollout
@@ -199,34 +194,25 @@ function Deploy-Env([string]$cluster, [string]$ns, [string]$envTmp) {
 function Test-IngressEndpoint([string]$Namespace, [string]$TimeoutSmoke) {
   $hostname = "app.$Namespace.local"
   $timeoutSec = Parse-DurationSeconds -Value $TimeoutSmoke
-  Write-Host "Testing external endpoint: http://$hostname/q/health (timeout $TimeoutSmoke)"
+  $url = "http://localhost/q/health"
+  Write-Host "Testing external endpoint: $url (Host: $hostname, timeout: $TimeoutSmoke)"
 
   try {
-    # Build candidate URLs: prefer k3d load balancer on :80, then Traefik NodePort if available
-    $candidates = @()
-    $candidates += "http://localhost:80/q/health"
-    $traefikPort = & kubectl -n kube-system get svc traefik -o jsonpath='{.spec.ports[?(@.name=="web")].nodePort}' 2>$null
-    if ($traefikPort) { $candidates += "http://localhost:$traefikPort/q/health" }
-
     $success = $false
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
-    $printed = @{}
     while ($sw.Elapsed.TotalSeconds -lt $timeoutSec -and -not $success) {
-      foreach ($url in $candidates) {
-        if (-not $printed.ContainsKey($url)) { Write-Host "Probing Ingress URL: $url with Host header: $hostname"; $printed[$url] = $true }
-        try {
-          $headers = @{ "Host" = $hostname }
-          $resp = Invoke-WebRequest -UseBasicParsing -Uri $url -Headers $headers -TimeoutSec 5
-          if ($resp.StatusCode -eq 200) {
-            Write-Host "External smoke test: OK (HTTP $($resp.StatusCode))"
-            $ext = "http://$hostname/q/health"
-            Write-Host "Endpoint: " -NoNewline; Write-Host $ext -ForegroundColor Blue
-            $success = $true
-            break
-          }
-        } catch {
-          # Continue to next candidate or retry loop
+      try {
+        $headers = @{ "Host" = $hostname }
+        $resp = Invoke-WebRequest -UseBasicParsing -Uri $url -Headers $headers -TimeoutSec 5
+        if ($resp.StatusCode -eq 200) {
+          Write-Host "External smoke test: OK (HTTP $($resp.StatusCode))"
+          $ext = "http://$hostname/q/health"
+          Write-Host "Endpoint: " -NoNewline; Write-Host $ext -ForegroundColor Blue
+          $success = $true
+          break
         }
+      } catch {
+        # Continue to next retry
       }
       if (-not $success) { Start-Sleep -Seconds 2 }
     }
