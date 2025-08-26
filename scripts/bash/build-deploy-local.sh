@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # build-deploy-local.sh — build image, import to k3d clusters, apply manifests (base -> env overlay) and run smoke job
 # Usage:
-#   ORG=your-org REPO=your-repo ./scripts/build-deploy-local.sh
+#   ORG=your-org REPO=your-repo ./scripts/bash/build-deploy-local.sh
 set -euo pipefail
 
 # --- config / env ---

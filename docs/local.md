@@ -9,8 +9,8 @@ Guia rápido para recriar o cluster k3d, buildar a app, fazer deploy local e ver
 
 ## 1) Reset do cluster k3d
 ```zsh
-./scripts/k3d-down.sh || true
-./scripts/k3d-up.sh
+./scripts/bash/k3d-down.sh || true
+./scripts/bash/k3d-up.sh
 ```
 Observações:
 - `k3d-up.sh` cria o cluster `hackathon-k3d` usando `infra/k3d/cluster.yaml` e atualiza `/etc/hosts` a partir de `infra/k3d/hosts.conf`.
@@ -28,7 +28,7 @@ cd /home/vmpm/environments/hackathon-2025
 export APPROVE_PRD=true
 
 # Build Maven -> build/tag Docker -> importar no k3d -> aplicar manifests -> smoke
-./scripts/build-deploy-local.sh
+./scripts/bash/build-deploy-local.sh
 ```
 
 ## 3) Verificação rápida
@@ -52,5 +52,5 @@ kubectl -n des logs deploy/app -f
 
 ## 4) Limpeza (opcional)
 ```zsh
-./scripts/k3d-down.sh
+./scripts/bash/k3d-down.sh
 ```

@@ -20,7 +20,7 @@ Alta disponibilidade, TLS/mkcert, Prometheus/metrics.
 
 ## Entregáveis
 - `infra/k3d/cluster.yaml`
-- `scripts/k3d-up.sh`, `scripts/k3d-down.sh`
+- `scripts/bash/k3d-up.sh`, `scripts/bash/k3d-down.sh`
 - `docs/cluster.md` com passo a passo e edição de `/etc/hosts`.
 
 ## Observações
