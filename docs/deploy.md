@@ -33,7 +33,7 @@ Instale k3d/kubectl/Docker conforme documentação oficial.
 Use o script idempotente de criação do cluster (nome padrão: `hackathon-k3d`). Ele também atualiza `/etc/hosts` a partir de `infra/k3d/hosts.conf`.
 
 ```bash
-scripts/k3d-up.sh
+scripts/bash/k3d-up.sh
 ```
 
 Notas:
@@ -66,7 +66,7 @@ Para usar uma imagem publicada no GHCR, você pode pular o build local e apontar
 
 ## Deploy local automatizado (recomendado)
 
-O script `scripts/build-deploy-local.sh` constrói/renderiza os manifests por ambiente, substitui `${NAMESPACE}` com `envsubst`, faz rollout/wait e smoke test. Ele sempre publica em DES e pede aprovação para PRD (ou lê `APPROVE_PRD=true`).
+O script `scripts/bash/build-deploy-local.sh` constrói/renderiza os manifests por ambiente, substitui `${NAMESPACE}` com `envsubst`, faz rollout/wait e smoke test. Ele sempre publica em DES e pede aprovação para PRD (ou lê `APPROVE_PRD=true`).
 
 Nota: por padrão, o script SEMPRE faz build da imagem local e usa essa imagem (tagueada como `ghcr.io/<org>/<repo>:<tag>`). Ele não realiza pull do GHCR.
 
@@ -78,8 +78,8 @@ Variáveis úteis:
 Exemplos:
 
 ```bash
-IMAGE_TAG=ghcr.io/<org>/<repo>:<sha> scripts/build-deploy-local.sh
-APPROVE_PRD=true IMAGE_TAG=ghcr.io/<org>/<repo>:<sha> scripts/build-deploy-local.sh
+IMAGE_TAG=ghcr.io/<org>/<repo>:<sha> scripts/bash/build-deploy-local.sh
+APPROVE_PRD=true IMAGE_TAG=ghcr.io/<org>/<repo>:<sha> scripts/bash/build-deploy-local.sh
 ```
 
 ## Deploy manual (alternativa)
@@ -125,7 +125,7 @@ curl -fsS http://app.prd.local/q/health
 ## Limpeza
 
 ```bash
-scripts/k3d-down.sh
+scripts/bash/k3d-down.sh
 ```
 
 ## Troubleshooting

@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# scripts/build-local.sh
+# scripts/bash/build-local.sh
 # Build the project, build a Docker image and run it detached to perform a smoke test
 # Usage:
-#   ./scripts/build-local.sh [--image IMAGE] [--port PORT] [--timeout SEC] [--no-clean]
+#   ./scripts/bash/build-local.sh [--image IMAGE] [--port PORT] [--timeout SEC] [--no-clean]
 # Examples:
-#   ./scripts/build-local.sh
-#   ./scripts/build-local.sh --image ghcr.io/org/repo:dev --no-clean
+#   ./scripts/bash/build-local.sh
+#   ./scripts/bash/build-local.sh --image ghcr.io/org/repo:dev --no-clean
 
 IMAGE="local-app:dev"
 NAME="local-app-smoke"

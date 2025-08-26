@@ -13,13 +13,13 @@ Opções de instalação rápidas (Ubuntu):
 - jq: sudo apt-get install -y jq
 
 Scripts úteis:
-- scripts/k3d-up.sh — cria cluster, aplica manifests declarativos e atualiza /etc/hosts a partir de `infra/k3d/hosts.conf` (se existir)
-- scripts/k3d-down.sh — remove cluster e limpa bloco marcado em /etc/hosts
+- scripts/bash/k3d-up.sh — cria cluster, aplica manifests declarativos e atualiza /etc/hosts a partir de `infra/k3d/hosts.conf` (se existir)
+- scripts/bash/k3d-down.sh — remove cluster e limpa bloco marcado em /etc/hosts
 
 Uso local (declarativo):
-1. Torne os scripts executáveis: chmod +x scripts/*.sh
+1. Torne os scripts executáveis: chmod +x scripts/bash/*.sh
 2. Crie o cluster e aplique recursos declarativos:
-   sudo ./scripts/k3d-up.sh
+   sudo ./scripts/bash/k3d-up.sh
    - nota: o sudo é necessário apenas para atualizar /etc/hosts; a criação do cluster não precisa de sudo se seu usuário estiver no grupo docker.
 3. Verifique namespaces: kubectl get ns
 4. Aplique/atualize manifests localmente (se necessário): kubectl apply -R -f deploy/base && kubectl apply -n des -R -f deploy/des
@@ -49,9 +49,9 @@ Checklist rápido pós-criação do cluster:
 
 Sugestão Makefile (opcional):
 - Adicionar targets minimalistas que orquestram os passos declarativos:
-  - `make k3d-up` -> `k3d create --config infra/k3d/cluster.yaml && ./scripts/k3d-up.sh`
+  - `make k3d-up` -> `k3d create --config infra/k3d/cluster.yaml && ./scripts/bash/k3d-up.sh`
   - `make bootstrap` -> aplica `deploy/base` e `deploy/des`
-  - `make k3d-down` -> `./scripts/k3d-down.sh`
+  - `make k3d-down` -> `./scripts/bash/k3d-down.sh`
 
 Observações de segurança:
 - Não comitar kubeconfig com credenciais.

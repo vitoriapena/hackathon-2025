@@ -96,7 +96,7 @@ kubectl -n des get job smoke-health -o jsonpath='{.status.succeeded}'
 curl --resolve app.des.local:80:127.0.0.1 http://app.des.local/q/health
 ```
 
-Dica: para um fluxo automatizado (build → DES → aprovação para PRD), use `scripts/build-deploy-local.sh`. Detalhes completos no guia abaixo.
+Dica: para um fluxo automatizado (build → DES → aprovação para PRD), use `scripts/bash/build-deploy-local.sh`. Detalhes completos no guia abaixo.
 
 ## Observações sobre manifests e overlays
 
