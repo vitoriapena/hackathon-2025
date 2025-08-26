@@ -63,12 +63,18 @@ jobs:
         run: |
           envsubst < deploy/base/service.yaml | kubectl apply -f -
 
+      - name: Apply Ingress (DES)
+        env:
+          NAMESPACE: ${{ env.NAMESPACE }}
+        run: |
+          envsubst < deploy/base/ingress.yaml | kubectl apply -f -
+
       - name: Apply Deployment (DES)
         env:
           IMAGE: ${{ env.IMAGE }}
           NAMESPACE: ${{ env.NAMESPACE }}
         run: |
-          envsubst < deploy/des/deployment-des.yaml | sed "s#ghcr.io/<org>/<repo>:<sha>#$IMAGE#g" | kubectl apply -f -
+          envsubst < deploy/des/deployment.yaml | kubectl apply -f -
 
       - name: Wait for rollout
         run: kubectl -n $NAMESPACE rollout status deploy/app --timeout=90s
@@ -138,12 +144,18 @@ jobs:
         run: |
           envsubst < deploy/base/service.yaml | kubectl apply -f -
 
+      - name: Apply Ingress (PRD)
+        env:
+          NAMESPACE: ${{ env.NAMESPACE }}
+        run: |
+          envsubst < deploy/base/ingress.yaml | kubectl apply -f -
+
       - name: Apply Deployment (PRD)
         env:
           IMAGE: ${{ env.IMAGE }}
           NAMESPACE: ${{ env.NAMESPACE }}
         run: |
-          envsubst < deploy/prd/deployment-prd.yaml | sed "s#ghcr.io/<org>/<repo>:<sha>#$IMAGE#g" | kubectl apply -f -
+          envsubst < deploy/prd/deployment.yaml | kubectl apply -f -
 
       - name: Wait for rollout
         run: kubectl -n $NAMESPACE rollout status deploy/app --timeout=120s

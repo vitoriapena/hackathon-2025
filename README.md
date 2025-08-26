@@ -53,7 +53,7 @@ Repositório com a aplicação Quarkus "Getting Started" preparada para build, c
 - `Dockerfile` — build multi-stage
 - `deploy/`
   - `base/` — manifests genéricos (`deployment.yaml`, `service.yaml`, `namespaces.yaml`, `smoke-job.yaml`) com `${NAMESPACE}`
-  - `des/` — manifests de ambiente (ex.: `deployment-des.yaml` com `image:` definido)
+  - `des/` — manifests de ambiente (ex.: `deploy/des/deployment.yaml` com `image:` definido)
   - `prd/` — manifests de produção simulada
 - `.github/workflows/` — workflows CI e deploy
 - `infra/k3d/` — config e scripts para criar o cluster local
@@ -120,6 +120,8 @@ Dica: para um fluxo automatizado (build → DES → aprovação para PRD), use `
 
 - Deploy automático para DES: merge em `main` → `kubectl apply -f deploy/des -R` e smoke test
 - Deploy para PRD: manual via `workflow_dispatch` com aprovação; usa a mesma imagem publicada pelo CI
+
+Aprenda o passo a passo no guia: `docs/ci-cd-lab.md`.
 
 ## Resumo das mudanças (commits recentes)
 
