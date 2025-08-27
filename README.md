@@ -1,148 +1,88 @@
 # Quarkus Getting Started — Deploy Automatizado (k3d)
 
-Repositório com a aplicação Quarkus "Getting Started" preparada para build, containerização e deploy local em k3d usando apenas manifests YAML puros (sem Kustomize/Helm).
+Repositório com a aplicação Quarkus "Getting Started" preparada para build, containerização e deploy local em k3d.
+
+[![CI](https://github.com/vitoriapena/hackathon-2025/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/vitoriapena/hackathon-2025/actions/workflows/ci.yaml)
+[![CD DES](https://github.com/vitoriapena/hackathon-2025/actions/workflows/cd.yaml/badge.svg?branch=main)](https://github.com/vitoriapena/hackathon-2025/actions/workflows/cd.yaml)
+[![CD PRD](https://github.com/vitoriapena/hackathon-2025/actions/workflows/cd.yaml/badge.svg?branch=main)](https://github.com/vitoriapena/hackathon-2025/actions/workflows/cd.yaml)
 
 ## Sumário
 
 - [Visão geral](#visão-geral)
-- [Etapas do desafio](#etapas-do-desafio)
-- [Pré-requisitos](#pré-requisitos)
-- [Estrutura do repositório](#estrutura-do-repositório)
-- [Como executar (resumo rápido)](#como-executar-resumo-rápido)
-- [Observações sobre manifests e overlays](#observações-sobre-manifests-e-overlays)
-- [CI/CD](#cicd)
-- [Resumo das mudanças (commits recentes)](#resumo-das-mudanças-commits-recentes)
-- [Onde ler mais](#onde-ler-mais)
-- [Contribuição](#contribuição)
-
----
+- [Pipeline Local](#pipeline-local)
+- [Guia para Executar o Pipeline Local](#guia-para-executar-o-pipeline-local)
 
 ## Visão geral
 
-- App: Quarkus Getting Started (Java 21, Maven)
-- Container: `Dockerfile` multi-stage (builder: maven + temurin-21; runtime: temurin-21-jre)
-- Orquestração: k3d local com namespaces `des` e `prd`
-- Deploy: manifests YAML puros em `deploy/base/` com overlays por ambiente em `deploy/des/` e `deploy/prd/` (sem Kustomize)
-- CI: GitHub Actions — build, test, Trivy scan e push para GHCR
+A solução oferece duas formas de execução do pipeline: local e GitHub Actions (automação CI/CD). Ambas compartilham os mesmos artefatos e ambientes k3d, diferindo apenas em alguns  mecanismos de execução.
 
-## Etapas do desafio
+## Pipeline Local
+O pipeline local automatiza o processo completo desde o build da aplicação Quarkus até o deploy nos ambientes DES e PRD do cluster k3d.
 
-- Leitura e entendimento do desafio
-- Criação de PRDs com o apoio de IA generativa
-- Revisão e adaptação dos PRDs
-- Definição do `copilot-instructions.md`
-- PRD-01: Cluster k3d local — criação e validação do cluster local
-- PRD-02: Build & Package Quarkus — Maven com Java 21 e testes
-- PRD-03: Containerização e Registro — Dockerfile multi-stage e push para GHCR
-- PRD-04: CI GitHub Actions — build, test, Trivy scan e publicação
-- PRD-05: Deploy DES — namespaces, service, deployment e smoke job
-- PRD-06: Deploy PRD com aprovação — gatilho manual reutilizando a imagem do CI
-- PRD-07: Versionamento & Documentação — SemVer/Conventional Commits e README final
+<img width="1898" height="915" alt="image" src="https://github.com/user-attachments/assets/4946556a-6db8-427f-9629-0eda5591ee83" />
 
-## Pré-requisitos
 
-- Java 21 (Temurin) para desenvolvimento local
-- Maven
-- Docker
-- k3d, kubectl
-- Acesso ao GHCR para push de imagens (se for publicar)
+## Guia para Executar o Pipeline Local
 
-## Estrutura do repositório
+**Pré-requisitos:**
 
-- `src/` — código fonte Quarkus
-- `Dockerfile` — build multi-stage
-- `deploy/`
-  - `base/` — manifests genéricos (`deployment.yaml`, `service.yaml`, `namespaces.yaml`, `smoke-job.yaml`) com `${NAMESPACE}`
-  - `des/` — manifests de ambiente (ex.: `deploy/des/deployment.yaml` com `image:` definido)
-  - `prd/` — manifests de produção simulada
-- `.github/workflows/` — workflows CI e deploy
-- `infra/k3d/` — config e scripts para criar o cluster local
-- `docs/PRDs/` — PRDs que guiaram a implementação
+- **PowerShell** 7+
+- **Java** 21 (preferencialmente Eclipse Temurin)
+- **Maven** 3.8+
+- **Docker Desktop**
+- **kubectl** (cliente Kubernetes)
+- **k3d** (para cluster Kubernetes local)
+- **Trivy** (scanner de vulnerabilidades)
+- **Git**
 
-## Como executar (resumo rápido)
+**Configuração Inicial**
 
-- Build (maven):
-
+1. Clone o repositório
 ```bash
-mvn -B -DskipTests=false package
+git clone https://github.com/vitoriapena/hackathon-2025.git
+cd hackathon-2025
 ```
 
-- Build de imagem (exemplo):
-
+2. Verifique as ferramentas
 ```bash
-docker build -t ghcr.io/<org>/<repo>:<sha> .
+# Confirme as instalações e versões
+java -version            
+mvn -version              
+docker --version          
+kubectl version --client  
+k3d version               
+trivy --version    
 ```
 
-- Deploy DES (exemplo — sequência declarativa):
-
+3. Configure permissões de execução dos scripts PowerShell
 ```bash
-# aplicar base parametrizada (usa ${NAMESPACE})
-export NAMESPACE=des
-find deploy/base -maxdepth 1 -name "*.yaml" -print0 | xargs -0 -I {} sh -c 'envsubst < "{}" | kubectl apply -f -'
-
-# aplicar overlay do ambiente e aguardar rollout
-kubectl apply -R -f deploy/des
-kubectl -n des rollout status deploy/app
-
-# verificar smoke-job in-cluster
-envsubst < deploy/base/smoke-job.yaml | kubectl apply -f -
-kubectl -n des wait --for=condition=complete job/smoke-health --timeout=60s
-kubectl -n des get job smoke-health -o jsonpath='{.status.succeeded}'
+# Torna apenas os scripts PowerShell da pasta scripts/ps/ executáveis
+Get-ChildItem -Path "scripts\ps\*.ps1" -Recurse | Unblock-File
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 ```
 
-- Smoke test (externo — fallback com --resolve):
-
+4. Crie o cluster k3d
 ```bash
-curl --resolve app.des.local:80:127.0.0.1 http://app.des.local/q/health
+# Use o script automatizado para criar o cluster
+pwsh -File scripts/ps/k3d-up.ps1
 ```
 
-Dica: para um fluxo automatizado (build → DES → aprovação para PRD), use `scripts/bash/build-deploy-local.sh`. Detalhes completos no guia abaixo.
+5. Build + Deploy completo
+```bash
+# Execute o pipeline completo e acompanhe os logs
+pwsh -File scripts/ps/build-deploy-local.ps1
+```
 
-## Observações sobre manifests e overlays
+6. Configure arquivos de hosts para acessar a aplicação via browser
+```bash
+# Execute como Administrador
+pwsh -File scripts/ps/setup-hosts.ps1
+```
 
-- Não há ferramentas extras: a tag da imagem pode ser definida nos overlays (`deploy/des/` e `deploy/prd/`) ou substituída por script.
-- Os YAMLs em `deploy/base/` são agnósticos de ambiente e exigem `NAMESPACE` ao aplicar manualmente (use `envsubst`).
-- Defaults:
-  - DES: 1 réplica
-  - PRD: 2 réplicas
-  - Probes: `readiness` e `liveness` em `/q/health` (porta 8080)
-  - Segurança: `runAsNonRoot`, capabilities mínimas
+7. Teste o acesso (Só funciona se o etc/hosts foi configurado corretamente)
 
-## CI/CD
+| Ambiente | Aplicação | Health Check |
+| --- | --- | --- |
+| DES | http://app.des.local/hello | http://app.des.local/q/health |
+| PRD | http://app.prd.local/hello | http://app.prd.local/q/health |
 
-- `ci.yml` realiza:
-  1. checkout (fetch-depth 0)
-  2. setup-java (Temurin 21)
-  3. `mvn test package`
-  4. build da imagem
-  5. scan com Trivy (falha em HIGH/CRITICAL)
-  6. push para GHCR
-
-- Deploy automático para DES: merge em `main` → `kubectl apply -f deploy/des -R` e smoke test
-- Deploy para PRD: manual via `workflow_dispatch` com aprovação; usa a mesma imagem publicada pelo CI
-
-Aprenda o passo a passo no guia: `docs/ci-cd-lab.md`.
-
-## Resumo das mudanças (commits recentes)
-
-- Base/Build: app Quarkus adicionada; Maven e compilação em Java 21; testes habilitados.
-- Health: dependência `quarkus-smallrye-health` para expor `/q/health`.
-- Container/Segurança: Dockerfile multi-stage Temurin 21; Trivy trocado para a action oficial; ajustes de referências e `.trivyignore`.
-- CI: Workflow de build/test/scan/push; CodeQL comentado por permissões; correções em paths de artefatos e `fetch-depth`.
-- k3d/Deploy: setup local k3d; manifests base (namespaces, service, deployment, smoke job); scripts de build/deploy locais.
-- CD: pipeline efêmero com k3d — DES automático após CI verde; PRD manual com aprovação; criação do tag `:des` pós-deploy.
-- Confiabilidade: namespace dinâmico, robustez no import de imagem no k3d, retry no smoke job e correções menores.
-
-## Onde ler mais
-
-- PRDs detalhados: `docs/PRDs/`
-- Guia de cluster k3d: `docs/cluster.md`
-- Guia de build: `docs/build.md`
-- Execução local: `docs/local.md`
-- Guia de deploy local: `docs/deploy.md`
-- CD efêmero (GitHub Actions): `docs/cd-ephemeral-actions.md`
-- Instruções do Copilot: `.github/copilot-instructions.md`
-
-## Contribuição
-
-Siga as convenções descritas nos PRDs: PRs pequenos, Conventional Commits, e mantenha os ajustes de infraestrutura simples.
